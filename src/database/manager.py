@@ -8,7 +8,6 @@ class DBManager:
 
     postgres_args = {
         'pool_size': 10,
-        'max_overflow': 5,
         'pool_timeout': 30,
         'pool_recycle': 1800,
     }
