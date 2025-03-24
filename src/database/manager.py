@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager, contextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlmodel import Session, StaticPool, create_engine
+from sqlmodel import Session, StaticPool, create_engine 
 
 class DBManager:
     sync_url = ''
@@ -25,7 +25,7 @@ class DBManager:
             args = self.sqlite_args
 
         elif database_url.startswith('postgresql://'):
-            self.sync_url = f'postgresql+psycopg://{database_url_split[1]}'
+            self.sync_url = f'postgresql+asyncpg://{database_url_split[1]}'
             self.async_url = f'postgresql+asyncpg://{database_url_split[1]}'
             args = self.postgres_args
 

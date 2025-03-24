@@ -1,21 +1,16 @@
 from typing import Annotated
-
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError, decode
 from sqlmodel import select
-
 from database import AsyncSessionDep
-
-from .models import User
-from .schema import SessionSchema
+from apps.users.models import Users
+from apps.users.schema import SessionSchema
 
 bearer = HTTPBearer()
 
 SECRET_KEY = 'your-secret-key'
 ALGORITHM = 'HS256'
-
-
 async def user_auth(
     session: AsyncSessionDep, credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)]
 ):
@@ -29,9 +24,8 @@ async def user_auth(
     except Exception:
         return None
 
-    user = (await session.execute(select(User).where(User.id == user_session.user_id))).scalar_one()
+    user = (await session.execute(select(Users).where(Users.idusers == user_session.user_id))).scalar_one()
     return user
-
 
 async def admin(
     session: AsyncSessionDep, credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)]
@@ -46,10 +40,10 @@ async def admin(
     except Exception:
         return None
 
-    if user_session.role != 'admin':
+    if user_session.role != 'Администратор':
         return None
 
-    user = (await session.execute(select(User).where(User.id == user_session.user_id))).scalar_one()
+    user = (await session.execute(select(Users).where(Users.idusers == user_session.user_id))).scalar_one()
     return user
 
 
@@ -66,10 +60,10 @@ async def teacher(
     except Exception:
         return None
 
-    if user_session.role != 'teacher':
+    if user_session.role != 'Преподаватель':
         return None
 
-    user = (await session.execute(select(User).where(User.id == user_session.user_id))).scalar_one()
+    user = (await session.execute(select(Users).where(Users.idusers == user_session.user_id))).scalar_one()
     return user
 
 
@@ -86,5 +80,5 @@ async def student(
     except Exception:
         return None
 
-    if user_session.role != 'student':
+    if user_session.role != 'Ученик':
         return None
