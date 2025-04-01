@@ -2,7 +2,7 @@ import os
 
 # Пример использования
 # file_path = r'C:\Users\Камила\Desktop\diplom_for_check\src\database\manager.py'
-file_path = r'C:\Users\Камила\Desktop\diplom_for_check\src\apps\users\auth.py'
+file_path = r'C:\Users\Камила\Desktop\diplom_for_check\src\apps\users\models.py'
 
 
 def clean_null_bytes(file_path):

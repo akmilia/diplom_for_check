@@ -4,8 +4,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError, decode
 from sqlmodel import select
 from database import AsyncSessionDep
-from apps.users.models import Users
-from apps.users.schema import SessionSchema
+from apps.users.models import *
+from apps.users.schema import *
 
 bearer = HTTPBearer()
 
