@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(default=False)
     
      # Database (PostgreSQL) 
-    DATABASE_URL: str = Field(default='postgresql+asyncpg://postgres:2006@localhost:5432/diplom_school')
+    DATABASE_URL: str = Field(default='postgresql://postgres:2006@localhost:5432/diplom_school')
 
     # Redis
     REDIS_URL: str = Field(default='redis://localhost:6379/0')

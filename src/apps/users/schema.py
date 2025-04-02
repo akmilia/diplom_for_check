@@ -1,5 +1,4 @@
 from pydantic import BaseModel 
-from pydantic import computed_field
 from datetime import date, datetime, time #type: ignore
 from typing import Literal, Optional #type: ignore 
 
@@ -61,24 +60,17 @@ class SubjectCreateSchema(BaseModel):
 
 # Расписание
 class ScheduleTeacherSchema(BaseModel):
-    id: int
-    surname: str
-    name: str
-    paternity: Optional[str] = None #type: ignore
+    full_name: str
     
-    @computed_field
-    @property
-    def full_name(self) -> str:
-        initials: list[str] = []  # Явная аннотация типа
-        if self.name:
-            initials.append(f"{self.name[0]}.")
-        if self.paternity:
-            initials.append(f"{self.paternity[0]}.")
-        
-        return f"{self.surname} {' '.join(initials)}".strip()
-    
-    class Config:
-        from_attributes = True
+    @classmethod
+    def from_string(cls, teacher_str: str) -> 'ScheduleTeacherSchema':
+        parts = teacher_str.split()
+        if len(parts) >= 1:
+            surname = parts[0]
+            name = parts[1][0] + '.' if len(parts) > 1 else ''
+            paternity = parts[2][0] + '.' if len(parts) > 2 else ''
+            return cls(full_name=f"{surname} {name}{paternity}".strip())
+        return cls(full_name=teacher_str)
 
 class ScheduleSubjectSchema(BaseModel):
     id: int
@@ -94,13 +86,14 @@ class ScheduleGroupSchema(BaseModel):
         from_attributes = True
 
 class ScheduleEntrySchema(BaseModel):
-    id: int
-    time: time  # Время занятия (например, "15:15:00")
-    subject: ScheduleSubjectSchema
+    idschedule: int
+    time: str  # Формат "HH:MM"
+    subject_name: str
     teacher: ScheduleTeacherSchema
-    cabinet: str  # Название кабинета
-    group_name: ScheduleGroupSchema
-    day_of_week: str  
+    cabinet: str
+    group_name: Optional[str] #type: ignore
+    day_of_week: str
+    
     class Config:
         from_attributes = True
 

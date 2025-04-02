@@ -19,8 +19,8 @@ class DBManager:
     def __init__(self, database_url: str):
         database_url_split = database_url.split('://')
         if database_url.startswith('postgresql://'):
-            self.sync_url = f'postgresql+asyncpg://{database_url_split[1]}'
-            self.async_url = f'postgresql+asyncpg://{database_url_split[1]}'
+            self.sync_url = f'postgresql://{database_url_split[1]}'
+            self.async_url = f'postgresql://{database_url_split[1]}'
             args = self.postgres_args
 
         else:
@@ -46,7 +46,7 @@ class DBManager:
     async def async_context_session(self):
         async with AsyncSession(self.async_engine) as session:
             yield session
-db_manager = DBManager('postgresql+asyncpg://postgres:2006@localhost:5432/diplom_school')
+db_manager = DBManager('postgresql://postgres:2006@localhost:5432/diplom_school')
 # from contextlib import asynccontextmanager, contextmanager
 
 # from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
