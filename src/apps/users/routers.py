@@ -1,31 +1,56 @@
-# from datetime import timedelta
-# from logging import getLogger
-# from typing import Annotated
+from datetime import date, datetime, time, timedelta
+from typing import Annotated, Literal, Optional
 
-# from fastapi import APIRouter, Depends, HTTPException
-# from jwt import encode
-# from sqlmodel import col, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, join, and_
+from sqlalchemy.orm import Session, selectinload, joinedload
 
-# from database import AsyncSessionDep
+from apps.users.models import (
+    Users, Roles, Groups, Types, Schedule, Attendance, Subjects, TypesSubjects,
+    BilNebil, Cabinets, t_types_subjects, t_groups_users, t_subjectsshow
+)
+from apps.users.schema import (
+    BearerSchema, LoginSchema, UserResponseSchema, ScheduleTeacherSchema, 
+    SubjectSchema, ScheduleEntryResponse, DayScheduleSchema, UserCreateSchema
+)
+from database.manager import AsyncSession
+from  middlewares.security import encode, SECRET_KEY, ALGORITHM
 
-# from .auth import ALGORITHM, SECRET_KEY, admin, user_auth
-# from .models import Cabinet, Role, Schedule, ScheduleCabinet, ScheduleSubject, Subject, User
-# from .schema import (
-#     BearerSchema,
-#     LoginSchema,
-#     ScheduleSchema,
-#     SchedulesSchema,
-#     SessionSchema,
-#     SubjectSchema,
-#     TeacherSchema,
-#     UserSchema,
-# )
-
-# logger = getLogger(__name__)
-
-# router = APIRouter()
-
+router = APIRouter
 #просто авторизация по входным данным 
+
+@router.post('/login', response_model=BearerSchema)
+async def login(
+    session: AsyncSession,
+    login_data: LoginSchema
+):
+    # Ищем пользователя по логину и паролю
+    user = (await session.execute(
+        select(Users)
+        .where(Users.login == login_data.login)
+        .where(Users.password == login_data.password)
+    )).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail='Пользователь не найден')
+
+    # Получаем роль пользователя
+    role = (await session.execute(
+        select(Roles).where(Roles.idroles == user.roles_idroles)
+    )).scalar_one()
+
+    # Генерируем токен (ваша текущая реализация)
+    encoded_jwt = str(encode(
+        {"role": role.name, "user_id": user.idusers},
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    ))
+
+    return BearerSchema(
+        access_token=encoded_jwt,
+        role=role.name
+    ) 
+
 # @router.post('/login', response_model=BearerSchema)
 # async def login(session: AsyncSessionDep, login_data: LoginSchema):
 #     user = (
@@ -47,37 +72,36 @@
 #     return BearerSchema(access_token=encoded_jwt, role=role.name)
 
 
-# @router.get('/profile', response_model=User, dependencies=[Depends(user_auth)])
+# @router.get('/profile', response_model=Users, dependencies=[Depends(user_auth)])
 # async def get_profile(user: Annotated[User, Depends(user_auth)]):
 #     return user
 
 
-# @router.get('/users', response_model=list[User], dependencies=[Depends(admin)])
-# async def get_users(session: AsyncSessionDep):
-#     return (await session.execute(select(User))).scalars().all()
+@router.get('/users', response_model=list[Users], dependencies=[Depends(admin)])
+async def get_users(session: AsyncSession):
+    return (await session.execute(select(Users))).scalars().all()
 
 
-# @router.post('/users', response_model=User, dependencies=[Depends(admin)])
-# async def create_user(session: AsyncSessionDep, user: UserSchema):
-#     u = User(
-#         surname=user.surname,
-#         name=user.name,
-#         paternity=user.paternity,
-#         gender=user.gender,
-#         birthdate=user.birthdate,
-#         login=user.login,
-#         password=user.password,
-#         role_id=user.role_id,
-#     )
-#     session.add(u)
-#     await session.commit()
-#     await session.refresh(u)
-#     return u
+@router.post('/users', response_model=Users, dependencies=[Depends(admin)])
+async def create_user(session: AsyncSession, user: UserCreateSchema):
+    u = Users(
+        surname=user.surname,
+        name=user.name,
+        paternity=user.paternity,
+        birthdate=user.birthdate,
+        login=user.login,
+        password=user.password,
+        role_id=user.role_id,
+    )
+    session.add(u)
+    await session.commit()
+    await session.refresh(u)
+    return u
 
 
-# @router.get('/teachers', response_model=list[User], dependencies=[Depends(admin)])
-# async def get_teachers(session: AsyncSessionDep):
-#     return (await session.execute(select(User).where(User.role_id == 2))).scalars().all()
+@router.get('/teachers', response_model=list[Users], dependencies=[Depends(admin)])
+async def get_teachers(session: AsyncSession):
+    return (await session.execute(select(Users).where(Users.roles_idroles == 2))).scalars().all()
 
 
 # @router.get('/subjects', response_model=list[Subject], dependencies=[Depends(admin)])
@@ -95,9 +119,142 @@
 #     session.add(subject)
 #     await session.commit()
 #     await session.refresh(subject)
-#     return subject
+#     return subject 
 
+@router.get('/subjects', response_model=list[SubjectSchema])
+async def get_subjects(
+    session: AsyncSession
+):
+    # Получаем все предметы из представления
+    subjects = (await session.execute(
+        select(t_subjectsshow)
+    )).scalars().all()
+    
+    if not subjects:
+        raise HTTPException(status_code=404, detail='Предметы не найдены')
+    
+    return subjects
 
+#очень интересно, но нафиг оно надо - это админка, которой тут нет
+# @router.post('/subjects', response_model=SubjectSchema, dependencies=[Depends(admin)])
+# async def create_subject(
+#     session: AsyncSession,
+#     subject_data: SubjectCreateSchema
+# ):
+#     # Создаем новый предмет
+#     new_subject = Subjects(
+#         name=subject_data.name,
+#         description=subject_data.description
+#     )
+#     session.add(new_subject)
+#     await session.commit()
+#     await session.refresh(new_subject)
+    
+#     # Создаем связь с типом
+#     for type_id in subject_data.type_ids:
+#         type_subject = TypesSubjects(
+#             types_id=type_id,
+#             subjects_idsubjects=new_subject.idsubjects
+#         )
+#         session.add(type_subject)
+    
+#     await session.commit()
+   
+#     # Получаем созданный предмет из представления
+#     created_subject = (await session.execute(
+#         select(SubjectSchema)
+#         .where(SubjectSchema.id == new_subject.idsubjects)
+#     )).scalar_one_or_none()
+    
+#     if not created_subject:
+#         raise HTTPException(status_code=500, detail='Ошибка при создании предмета')
+  
+#     return created_subject
+
+@router.get('/schedule', response_model=list[ScheduleEntryResponse])
+async def get_schedule(
+    session: AsyncSession,
+    day_of_week: str,
+    group_id: Optional[int] = None  # type: ignore
+):
+    # Базовый запрос с загрузкой связанных данных
+    query = (
+        select(Schedule)
+        .options(
+            joinedload(Schedule.subjects),
+            joinedload(Schedule.users),
+            joinedload(Schedule.cabinets),
+            joinedload(Schedule.groups),
+            joinedload(Schedule.attendance)
+        )
+    )
+    
+    # Применяем фильтры
+    if day_of_week:
+        query = query.where(Schedule.day_of_week == day_of_week)
+    if group_id:
+        query = query.where(Schedule.groups_idgroup == group_id)
+    
+    # Выполняем запрос
+    schedules = (await session.execute(query)).unique().scalars().all()
+    
+    if not schedules:
+        raise HTTPException(status_code=404, detail='Расписание не найдено')
+    
+    # Преобразуем в ответ
+    result = []
+    for schedule in schedules:
+        # Получаем даты занятий из Attendance
+        dates = [a.date.strftime("%d.%m.%Y") for a in schedule.attendance]
+        
+        # Преобразуем день недели из числа в текст
+        day_names = {
+            1: "Понедельник",
+            2: "Вторник",
+            3: "Среда",
+            4: "Четверг",
+            5: "Пятница",
+            6: "Суббота"
+        }
+        
+        result.append(ScheduleEntryResponse(
+            idschedule=schedule.idschedule,
+            time=schedule.time.strftime("%H:%M"),
+            subject_name=schedule.subjects.name,
+            teacher=ScheduleTeacherSchema(
+                id=schedule.users.idusers,
+                surname=schedule.users.surname,
+                name=schedule.users.name,
+                paternity=schedule.users.paternity
+            ),
+            cabinet=schedule.cabinets.idcabinet,  # или schedule.cabinets.name, если есть название
+            group_name=schedule.groups.name if schedule.groups else None,
+            day_of_week=day_names.get(schedule.day_of_week, "Неизвестно"),
+            dates=dates
+        ))
+    
+    return result
+
+@router.get('/schedule/days')
+async def get_schedule_by_days(
+    session: AsyncSession,
+    group_id: Optional[int] = None  # type: ignore
+):
+    day_mapping = {
+        1: "Понедельник",
+        2: "Вторник",
+        3: "Среда",
+        4: "Четверг",
+        5: "Пятница",
+        6: "Суббота"
+    }
+    
+    result = {}
+    for day_num, day_name in day_mapping.items():
+        schedules = await get_schedule(session, day_of_week=day_num, group_id=group_id)
+        result[day_name] = schedules
+    
+    return result
 # @router.get('/schedule', response_model=list[SchedulesSchema], dependencies=[Depends(admin)])
 # async def get_schedule(session: AsyncSessionDep):
 #     schedules_stmt = (
@@ -156,7 +313,7 @@
 
 #     return schedules_list
 
-
+# опять таки неинтресно
 # @router.post('/schedule', response_model=list[ScheduleSchema], dependencies=[Depends(admin)])
 # async def create_schedule(session: AsyncSessionDep, schedule_data: ScheduleSchema):
 #     cabinet_stmt = select(Cabinet).where(Cabinet.description == schedule_data.cabinet)

@@ -37,7 +37,7 @@ class Roles(Base):
     )
 
     idroles: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[Optional[str]] = mapped_column(String(25)) # type: ignore
+    name: Mapped[str] = mapped_column(String(25)) # type: ignore
 
     users: Mapped[List['Users']] = relationship('Users', back_populates='roles') # type: ignore
 
@@ -110,6 +110,25 @@ t_types_subjects = Table(
     PrimaryKeyConstraint('types_id', 'subjects_idsubjects', name='types_subjects_pkey')
 )
 
+class TypesSubjects(Base):
+    __tablename__ = 'types_subjects'
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['subjects_idsubjects'],
+            ['subjects.idsubjects'],
+            ondelete='CASCADE',
+            name='idsubject_fkey'
+        ),
+        ForeignKeyConstraint(
+            ['types_id'],
+            ['types.id'],
+            name='types_subjects_types_id_fkey'
+        ),
+        PrimaryKeyConstraint('types_id', 'subjects_idsubjects', name='types_subjects_pkey')
+    )
+    
+    types_id = Column(Integer, nullable=False)
+    subjects_idsubjects = Column(Integer, nullable=False)
 
 class Users(Base):
     __tablename__ = 'users'
