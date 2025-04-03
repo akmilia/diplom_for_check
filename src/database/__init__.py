@@ -8,8 +8,11 @@ from fastapi import Depends, FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Session
 
+from apps.users.models import Users, Schedule, Subjects, Types, Roles, Groups, t_usersshow, t_groups_users, t_scheduleshow, t_subjectsshow, Attendance, BilNebil, TypesSubjects, Cabinets, Base
 from core.config import settings
-from database.manager import DBManager
+from database.manager import DBManager, db_manager
+
+Base.metadata.reflect
 
 logger = getLogger(__name__)
 
