@@ -27,10 +27,9 @@ class UserCreateSchema(BaseModel):
 
 class UserResponseSchema(BaseModel):
     id: int
-    name: str
-    surname: str
-    paternity: Optional[str] = None #type: ignore
-    login: str
+    full_name: str
+    login: str 
+    roles_idroles: int
     role: str  # Название роли (например, "Администратор")
 
     class Config:
