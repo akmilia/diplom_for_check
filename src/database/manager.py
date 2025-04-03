@@ -1,51 +1,41 @@
 from contextlib import asynccontextmanager, contextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlmodel import Session, StaticPool, create_engine 
+from sqlalchemy import create_engine
+from sqlmodel import Session
 
 class DBManager:
-    sync_url = ''
-    async_url = ''
-
-    postgres_args = {
-        'pool_size': 10,
-        'pool_timeout': 30,
-        'pool_recycle': 1800,
-    }
-    sqlite_args = {
-        'poolclass': StaticPool,
-        'connect_args': {'check_same_thread': False},
-    }
-
     def __init__(self, database_url: str):
-        database_url_split = database_url.split('://')
+        # Определяем URL для синхронного и асинхронного подключения
         if database_url.startswith('postgresql://'):
-            self.sync_url = f'postgresql://{database_url_split[1]}'
-            self.async_url = f'postgresql://{database_url_split[1]}'
-            args = self.postgres_args
-
+            # Для асинхронного подключения заменяем на asyncpg
+            self.async_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
+            self.sync_url = database_url
         else:
             raise ValueError(f'Invalid database URL: {database_url}')
 
-        self.sync_engine = create_engine(self.sync_url, **args)
-        self.async_engine = create_async_engine(self.async_url, **args)
+        # Параметры пула соединений
+        self.postgres_args = {
+            'pool_size': 10,
+            'pool_timeout': 30,
+            'pool_recycle': 1800,
+            'echo': True  # Для отладки SQL-запросов
+        }
 
+        # Создаем движки
+        self.sync_engine = create_engine(self.sync_url, **self.postgres_args)
+        self.async_engine = create_async_engine(self.async_url, **self.postgres_args)
+
+    @contextmanager
     def sync_session(self):
         with Session(self.sync_engine) as session:
             yield session
 
+    @asynccontextmanager
     async def async_session(self):
         async with AsyncSession(self.async_engine) as session:
             yield session
 
-    @contextmanager
-    def sync_context_session(self):
-        with Session(self.sync_engine) as session:
-            yield session
-
-    @asynccontextmanager
-    async def async_context_session(self):
-        async with AsyncSession(self.async_engine) as session:
-            yield session
+# Инициализация с правильным URL
 db_manager = DBManager('postgresql://postgres:2006@localhost:5432/diplom_school')
 # from contextlib import asynccontextmanager, contextmanager
 

@@ -5,7 +5,7 @@ from jwt import PyJWTError, decode
 from sqlmodel import select
 from database import AsyncSessionDep
 from apps.users.models import *
-from apps.users.schema import *
+from apps.users.schema import SessionSchema
 
 bearer = HTTPBearer()
 

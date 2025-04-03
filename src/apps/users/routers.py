@@ -8,7 +8,8 @@ from apps.users.schema import (
     BearerSchema, LoginSchema, ScheduleTeacherSchema, 
     SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserCreateSchema # type: ignore
 )
-from database.manager import AsyncSession
+from database.manager import AsyncSession, db_manager
+
 from  middlewares.security import encode, SECRET_KEY, ALGORITHM
 from middlewares.security import student_required, teacher_required  
 
@@ -170,9 +171,10 @@ router.include_router(teacher_router)
 router.include_router(student_router)
 
 @router.post('/login', response_model=BearerSchema)
-async def login(
-    session: AsyncSession,
-    login_data: LoginSchema
+async def login( 
+    login_data: LoginSchema, 
+    session: AsyncSession = Depends(db_manager.async_session)
+   
 ):
     # Ищем пользователя по логину и паролю
     user = (await session.execute(
@@ -203,7 +205,7 @@ async def login(
 
 
 @router.get('/users', response_model=list[Users])
-async def get_users(session: AsyncSession):
+async def get_users(   session: AsyncSession = Depends(db_manager.async_session)):
     return (await session.execute(select(Users))).scalars().all()
 
 
@@ -225,12 +227,12 @@ async def get_users(session: AsyncSession):
 
 
 @router.get('/teachers', response_model=list[Users], dependencies=[Depends(student_required)])
-async def get_teachers(session: AsyncSession):
+async def get_teachers(   session: AsyncSession = Depends(db_manager.async_session)):
     return (await session.execute(select(Users).where(Users.roles_idroles == 2))).scalars().all()
 
 @router.get('/subjects', response_model=list[SubjectSchema])
 async def get_subjects(
-    session: AsyncSession
+       session: AsyncSession = Depends(db_manager.async_session)
 ):
     # Получаем все предметы из представления
     subjects = (await session.execute(
@@ -243,10 +245,11 @@ async def get_subjects(
     return subjects
 
 @router.get('/schedule', response_model=list[ScheduleEntrySchema])
-async def get_schedule(
-    session: AsyncSession,
-    day_of_week: str,
-    group_id: int | None
+async def get_schedule( 
+     day_of_week: str,
+    group_id: int | None,
+    session: AsyncSession = Depends(db_manager.async_session), 
+   
 ):
     # Базовый запрос к представлению
     query = select(t_scheduleshow)
@@ -286,7 +289,7 @@ async def get_schedule_by_days(
     result: dict[str, list[ScheduleEntrySchema]] = {}
     
     for day in days:
-        schedules = await get_schedule(session, day_of_week=day, group_id=group_id)
+        schedules = await get_schedule(session, day_of_week=day, group_id=group_id) # type: ignore
         if schedules:
             result[day] = schedules
 
@@ -295,7 +298,7 @@ async def get_schedule_by_days(
 @router.get('/schedule/{schedule_id}/dates', response_model=list[str])
 async def get_schedule_dates(
     schedule_id: int,
-    session: AsyncSession
+    session: AsyncSession = Depends(db_manager.async_session)
 ):
     dates = (await session.execute(
         select(Attendance.date)

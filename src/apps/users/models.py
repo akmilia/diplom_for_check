@@ -101,14 +101,14 @@ t_usersshow = Table(
 )
 
 
-t_types_subjects = Table(
-    'types_subjects', Base.metadata,
-    Column('types_id', Integer, primary_key=True, nullable=False),
-    Column('subjects_idsubjects', Integer, primary_key=True, nullable=False),
-    ForeignKeyConstraint(['subjects_idsubjects'], ['subjects.idsubjects'], ondelete='CASCADE', name='idsubject_fkey'),
-    ForeignKeyConstraint(['types_id'], ['types.id'], name='types_subjects_types_id_fkey'),
-    PrimaryKeyConstraint('types_id', 'subjects_idsubjects', name='types_subjects_pkey')
-)
+# t_types_subjects = Table(
+#     'types_subjects', Base.metadata,
+#     Column('types_id', Integer, primary_key=True, nullable=False),
+#     Column('subjects_idsubjects', Integer, primary_key=True, nullable=False),
+#     ForeignKeyConstraint(['subjects_idsubjects'], ['subjects.idsubjects'], ondelete='CASCADE', name='idsubject_fkey'),
+#     ForeignKeyConstraint(['types_id'], ['types.id'], name='types_subjects_types_id_fkey'),
+#     PrimaryKeyConstraint('types_id', 'subjects_idsubjects', name='types_subjects_pkey')
+# )
 
 class TypesSubjects(Base):
     __tablename__ = 'types_subjects'

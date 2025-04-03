@@ -7,6 +7,9 @@ class LoginSchema(BaseModel):
     login: str
     password: str
 
+class SessionSchema(BaseModel):
+    role: str
+    user_id: int
 class BearerSchema(BaseModel):
     access_token: str
     role: str  # Например, "admin", "teacher", "student"
