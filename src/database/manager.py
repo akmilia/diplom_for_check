@@ -1,119 +1,104 @@
 from contextlib import asynccontextmanager, contextmanager
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from typing import AsyncIterator # type: ignore
+from typing import AsyncGenerator, Any, Generator # type: ignore
+from sqlalchemy.ext.asyncio import (
+    AsyncSession, 
+    create_async_engine, 
+    async_sessionmaker
+)
 from sqlalchemy import create_engine
-from sqlmodel import Session
+from sqlalchemy.orm import sessionmaker, Session
 
 class DBManager:
-    def __init__(self, database_url: str):
-        # Определяем URL для синхронного и асинхронного подключения
-        if database_url.startswith('postgresql://'):
-            # Для асинхронного подключения заменяем на asyncpg
-            self.async_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
-            self.sync_url = database_url
-        else:
-            raise ValueError(f'Invalid database URL: {database_url}')
+    def __init__(self, database_url: str) -> None:
+        # Сохраняем оригинальный URL для синхронных подключений
+        self.sync_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+        
+        # Модифицируем URL для асинхронных подключений
+        if not database_url.startswith("postgresql+asyncpg://"):
+            if database_url.startswith("postgresql://"):
+                database_url = database_url.replace(
+                    "postgresql://", 
+                    "postgresql+asyncpg://", 
+                    1
+                )
+            else:
+                raise ValueError(
+                    "Invalid database URL. Required format: "
+                    "postgresql+asyncpg://user:password@host/dbname or "
+                    "postgresql://user:password@host/dbname"
+                )
 
-        # Параметры пула соединений
-        self.postgres_args = {
-            'pool_size': 10,
-            'pool_timeout': 30,
-            'pool_recycle': 1800,
-            'echo': True  # Для отладки SQL-запросов
-        }
+        # Асинхронный движок для приложения
+        self.async_engine = create_async_engine(
+            database_url,
+            connect_args={"server_settings": {"jit": "off"}},
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo=True
+        )
+        
+        # Синхронный движок для миграций
+        self.sync_engine = create_engine(
+            self.sync_url,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo=True
+        )
 
-        # Создаем движки
-        self.sync_engine = create_engine(self.sync_url, **self.postgres_args)
-        self.async_engine = create_async_engine(self.async_url, **self.postgres_args)
+        # Асинхронная фабрика сессий
+        self.async_session_factory = async_sessionmaker(
+            bind=self.async_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False
+        )
 
-    @contextmanager
-    def sync_session(self):
-        with Session(self.sync_engine) as session:
-            yield session
+        # Синхронная фабрика сессий
+        self.sync_session_factory = sessionmaker(
+            bind=self.sync_engine,
+            expire_on_commit=False,
+            autoflush=False
+        )
 
     @asynccontextmanager
-    async def async_session(self):
-        async with AsyncSession(self.async_engine) as session:
+    async def session(self) -> AsyncGenerator[AsyncSession, Any]:
+        """Асинхронный контекстный менеджер для приложения"""
+        async with self.async_session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                raise e
+            finally:
+                await session.close()
+
+    @contextmanager
+    def sync_session(self) -> Generator[Session, Any, None]:
+        """Синхронный контекстный менеджер для миграций"""
+        session = self.sync_session_factory()
+        try:
             yield session
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
-# Инициализация с правильным URL
-db_manager = DBManager('postgresql://postgres:2006@localhost:5432/diplom_school')
-# from contextlib import asynccontextmanager, contextmanager
+    @property
+    def sync_connection_url(self) -> str:
+        """Возвращает синхронный URL для Alembic"""
+        return self.sync_url
 
-# from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-# from sqlmodel import Session, StaticPool, create_engine
+# Инициализация с async URL, но сохраняем sync версию
+db_manager = DBManager("postgresql+asyncpg://postgres:2006@localhost:5432/diplom_school")
 
-
-# class DBManager:
-#     sync_url = ''
-#     async_url = ''
-
-#     postgres_args = {
-#         'pool_size': 10,
-#         'max_overflow': 5,
-#         'pool_timeout': 30,
-#         'pool_recycle': 1800,
-#     }
-#     sqlite_args = {
-#         'poolclass': StaticPool,
-#         'connect_args': {'check_same_thread': False},
-#     }
-
-#     def __init__(self, database_url: str):
-#         database_url_split = database_url.split('://')
-
-#         if database_url.startswith('sqlite://'):
-#             self.sync_url = f'sqlite://{database_url_split[1]}'
-#             self.async_url = f'sqlite+aiosqlite://{database_url_split[1]}'
-#             args = self.sqlite_args
-
-#         elif database_url.startswith('postgresql://'):
-#             self.sync_url = f'postgresql+psycopg://{database_url_split[1]}'
-#             self.async_url = f'postgresql+asyncpg://{database_url_split[1]}'
-#             args = self.postgres_args
-
-#         else:
-#             raise ValueError(f'Invalid database URL: {database_url}')
-
-#         self.sync_engine = create_engine(self.sync_url, **args)
-#         self.async_engine = create_async_engine(self.async_url, **args)
-
-#         self.sync_test_engine = create_engine('sqlite:///test.db', **self.sqlite_args)
-#         self.async_test_engine = create_async_engine(
-#             'sqlite+aiosqlite:///test.db', **self.sqlite_args
-#         )
-
-#     def sync_session(self):
-#         with Session(self.sync_engine) as session:
-#             yield session
-
-#     def sync_test_session(self):
-#         with Session(self.sync_test_engine) as session:
-#             yield session
-
-#     async def async_session(self):
-#         async with AsyncSession(self.async_engine) as session:
-#             yield session
-
-#     async def async_test_session(self):
-#         async with AsyncSession(self.async_test_engine) as session:
-#             yield session
-
-#     @contextmanager
-#     def sync_context_session(self):
-#         with Session(self.sync_engine) as session:
-#             yield session
-
-#     @contextmanager
-#     def sync_context_test_session(self):
-#         with Session(self.sync_test_engine) as session:
-#             yield session
-
-#     @asynccontextmanager
-#     async def async_context_session(self):
-#         async with AsyncSession(self.async_engine) as session:
-#             yield session
-
-#     @asynccontextmanager
-#     async def async_context_test_session(self):
-#         async with AsyncSession(self.async_test_engine) as session:
-#             yield session
+async def get_session() -> AsyncIterator[AsyncSession]:  # Измененная строка
+    async with db_manager.session() as session:
+        yield session

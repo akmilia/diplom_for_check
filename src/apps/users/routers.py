@@ -8,28 +8,14 @@ from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, 
     SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserCreateSchema # type: ignore
 )
-from database.manager import AsyncSession, db_manager
+from database.manager import AsyncSession, get_session
 
-from  middlewares.security import encode, SECRET_KEY, ALGORITHM
+from middlewares.security import encode, SECRET_KEY, ALGORITHM
 from middlewares.security import student_required, teacher_required, get_current_user_id, get_current_user_role
 
-common_router = APIRouter(prefix="", tags=["Common"])
-
-# Роутер только для преподавателей
-teacher_router = APIRouter(
-    prefix="",
-    tags=["Teacher"],
-    dependencies=[Depends(teacher_required)]
-)
-
-# Роутер только для учеников
-student_router = APIRouter(
-    prefix="",
-    tags=["Student"],
-    dependencies=[Depends(student_required)]
-)
-
-# Общий роутер для аутентификации
+common_router = APIRouter(prefix="/api", tags=["Common"])
+teacher_router = APIRouter(prefix="", tags=["Teacher"], dependencies=[Depends(teacher_required)])
+student_router = APIRouter(prefix="", tags=["Student"], dependencies=[Depends(student_required)])
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 router = APIRouter()
@@ -38,10 +24,11 @@ router.include_router(common_router)
 router.include_router(teacher_router)
 router.include_router(student_router)
 
-@auth_router.post('/login', response_model=BearerSchema)
+
+@router.post('/login', response_model=BearerSchema)
 async def login( 
     login_data: LoginSchema, 
-    session: AsyncSession = Depends(db_manager.async_session)
+    session: AsyncSession = Depends(get_session)
 ):
     # Ищем пользователя по логину и паролю
     user = (await session.execute(
@@ -67,12 +54,13 @@ async def login(
 
     return BearerSchema(
         access_token=encoded_jwt,
-        role=role.name
-    ) 
+        role=role.name,
+        token_type="bearer"
+    )
 
 
 @router.get('/users', response_model=list[UserResponseSchema])
-async def get_users(   session: AsyncSession = Depends(db_manager.async_session)):
+async def get_users(   session: AsyncSession = Depends(get_session)):
     return (await session.execute(select(t_usersshow))).scalars().all()
 
 
@@ -93,13 +81,16 @@ async def get_users(   session: AsyncSession = Depends(db_manager.async_session)
 #     return u
 
 
-@router.get('/teachers', response_model=list[UserResponseSchema], dependencies=[Depends(student_required)])
-async def get_teachers(   session: AsyncSession = Depends(db_manager.async_session)):
-    return (await session.execute(select(t_usersshow).where(Users.roles_idroles == 2))).scalars().all()
+@router.get('/teachers', response_model=list[UserResponseSchema])
+async def get_teachers(session: AsyncSession = Depends(get_session)):
+    """Получить список преподавателей"""
+    return (await session.execute(
+        select(t_usersshow).where(Users.roles_idroles == 2)
+    )).scalars().all()
 
 @router.get('/subjects', response_model=list[SubjectSchema])
 async def get_subjects(
-       session: AsyncSession = Depends(db_manager.async_session)
+       session: AsyncSession = Depends(get_session)
 ):
     # Получаем все предметы из представления
     subjects = (await session.execute(
@@ -115,7 +106,7 @@ async def get_subjects(
 # async def get_schedule( 
 #     day_of_week: str,
 #     group_id: int | None,
-#     session: AsyncSession = Depends(db_manager.async_session), 
+#     session: AsyncSession = Depends(get_session), 
 # ) -> list[ScheduleEntrySchema]:
 #     # Базовый запрос к представлению
 #     query = select(t_scheduleshow)
@@ -148,7 +139,7 @@ async def get_subjects(
 
 @common_router.get("/schedule", response_model=list[ScheduleEntrySchema])
 async def get_schedule(
-    session: AsyncSession = Depends(db_manager.async_session),
+    session: AsyncSession = Depends(get_session),
     user_id: int = Depends(get_current_user_id), 
     role: str = Depends(get_current_user_role)
 ) -> list[ScheduleEntrySchema]:
@@ -188,7 +179,7 @@ async def get_schedule(
 # @router.get('/schedule/days', response_model=dict[str, list[ScheduleEntrySchema]])
 # async def get_schedule_by_days(
 #     group_id: int | None = None,
-#     session: AsyncSession = Depends(db_manager.async_session)
+#     session: AsyncSession = Depends(get_session)
 # ) -> dict[str, list[ScheduleEntrySchema]]:
 #     days = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
 #     result: dict[str, list[ScheduleEntrySchema]] = {}
@@ -203,7 +194,7 @@ async def get_schedule(
 @router.get('/schedule/{schedule_id}/dates', response_model=list[str])
 async def get_schedule_dates(
     schedule_id: int,
-    session: AsyncSession = Depends(db_manager.async_session)
+    session: AsyncSession = Depends(get_session)
 ):
     dates = (await session.execute(
         select(Attendance.date)

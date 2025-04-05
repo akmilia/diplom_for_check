@@ -12,7 +12,7 @@ dictConfig(log_config)
 
 
 config = context.config
-url = db_manager.sync_url
+url = db_manager.sync_connection_url
 target_metadata = Base.metadata
 
 
