@@ -26,31 +26,31 @@ class UserCreateSchema(BaseModel):
     role_id: int  # Ссылка на roles.idroles
 
 class UserResponseSchema(BaseModel):
-    id: int
-    full_name: str
+    idusers: int
     login: str 
-    roles_idroles: int
-    role: str  # Название роли (например, "Администратор")
+    password: str
+    full_name: str
+    idroles: int
+    user_role: str  # Название роли (например, "Администратор")
 
     class Config:
         from_attributes = True
 
 # Предметы
 class SubjectTypeSchema(BaseModel):
-    id: int
-    type: str  # "sport", "art", "education"
+    type_id: int
+    type_name: str
 
     class Config:
         from_attributes = True
-
 class SubjectSchema(BaseModel):
-    id: int
-    name: str
+    subject_id: int
+    subject_name: str
     description: str
     types: list[SubjectTypeSchema]  # Список типов предмета
 
     class Config:
-        from_attributes = True  
+        from_attributes = True
 
 class SubjectCreateSchema(BaseModel): 
     name: str

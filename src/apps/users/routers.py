@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select 
+from sqlalchemy.orm import contains_eager
 
 from apps.users.models import (
-    Users, Roles, Attendance, t_scheduleshow, t_subjectsshow, t_usersshow,  t_groups_users
+    Users, Roles, Attendance, t_scheduleshow, t_subjectsshow, t_usersshow,  t_groups_users, Subjects # type: ignore
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, 
@@ -58,49 +59,49 @@ async def login(
         token_type="bearer"
     )
 
-
 @router.get('/users', response_model=list[UserResponseSchema])
-async def get_users(   session: AsyncSession = Depends(get_session)):
-    return (await session.execute(select(t_usersshow))).scalars().all()
-
-
-# @router.post('/users', response_model=Users, dependencies=[Depends(admin)])
-# async def create_user(session: AsyncSession, user: UserCreateSchema):
-#     u = Users(
-#         surname=user.surname,
-#         name=user.name,
-#         paternity=user.paternity,
-#         birthdate=user.birthdate,
-#         login=user.login,
-#         password=user.password,
-#         role_id=user.role_id,
-#     )
-#     session.add(u)
-#     await session.commit()
-#     await session.refresh(u)
-#     return u
-
+async def get_users(session: AsyncSession = Depends(get_session)):
+    query = select(t_usersshow)  # Представление должно содержать все нужные поля
+    result = await session.execute(query)
+    return result.mappings().all()
 
 @router.get('/teachers', response_model=list[UserResponseSchema])
 async def get_teachers(session: AsyncSession = Depends(get_session)):
-    """Получить список преподавателей"""
-    return (await session.execute(
-        select(t_usersshow).where(Users.roles_idroles == 2)
-    )).scalars().all()
+    query = select(t_usersshow).where(t_usersshow.c.idroles == 2)
+    result = await session.execute(query)
+    return result.mappings().all()
 
 @router.get('/subjects', response_model=list[SubjectSchema])
 async def get_subjects(
        session: AsyncSession = Depends(get_session)
 ):
-    # Получаем все предметы из представления
-    subjects = (await session.execute(
-        select(t_subjectsshow)
-    )).scalars().all()
+    query = (
+        select(Subjects)
+        .options(contains_eager(Subjects.types))
+        .join(Subjects.types)
+    )
     
-    if not subjects:
+    db_subjects = (await session.execute(query)).unique().scalars().all()
+    
+    if not db_subjects:
         raise HTTPException(status_code=404, detail='Предметы не найдены')
     
-    return subjects
+    # Преобразуем в формат ответа
+    return [
+        {
+            "subject_id": subject.idsubjects,
+            "subject_name": subject.name,
+            "description": subject.description or "",
+            "types": [
+                {
+                    "type_id": type_.id,
+                    "type_name": type_.type or "Не указан"
+                }
+                for type_ in subject.types
+            ]
+        }
+        for subject in db_subjects
+    ]
 
 # @router.get('/schedule', response_model=list[ScheduleEntrySchema])
 # async def get_schedule( 
@@ -137,7 +138,7 @@ async def get_subjects(
 #         for row in result
 #     ] 
 
-@common_router.get("/schedule", response_model=list[ScheduleEntrySchema])
+@router.get("/schedule", response_model=list[ScheduleEntrySchema])
 async def get_schedule(
     session: AsyncSession = Depends(get_session),
     user_id: int = Depends(get_current_user_id), 
