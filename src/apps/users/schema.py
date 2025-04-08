@@ -9,7 +9,8 @@ class LoginSchema(BaseModel):
 
 class SessionSchema(BaseModel):
     role: str
-    user_id: int
+    user_id: int 
+    
 class BearerSchema(BaseModel):
     access_token: str
     role: str  # Например, "admin", "teacher", "student"
@@ -31,27 +32,43 @@ class UserResponseSchema(BaseModel):
     password: str
     full_name: str
     idroles: int
-    user_role: str  # Название роли (например, "Администратор")
+    user_role: str  
 
     class Config:
         from_attributes = True
 
 # Предметы
-class SubjectTypeSchema(BaseModel):
-    type_id: int
-    type_name: str
 
+class TypeSchema(BaseModel):
+    id: int  
+    type: str 
     class Config:
         from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "id": 1,
+                "type": "Основной"
+            }
+        }
 class SubjectSchema(BaseModel):
     subject_id: int
     subject_name: str
-    description: str
-    types: list[SubjectTypeSchema]  # Список типов предмета
-
+    description: str 
+    types: list[TypeSchema]  # Используем TypeSchema
+    
     class Config:
         from_attributes = True
-
+        json_schema_extra = {
+            "example": {
+                "subject_id": 1,
+                "subject_name": "Математика",
+                "description": "Базовый курс",
+                "types": [
+                    {"id": 1, "type": "Основной"},
+                    {"id": 2, "type": "Дополнительный"}
+                ]
+            }
+        }
 class SubjectCreateSchema(BaseModel): 
     name: str
     description: str
@@ -117,52 +134,3 @@ class DayScheduleSchema(BaseModel):
     day_name: str  # Название дня недели
     schedules: list[ScheduleEntrySchema]
 
-# class SessionSchema(BaseModel):
-#     role: str
-#     user_id: int
-
-
-# class LoginSchema(BaseModel):
-#     login: str
-#     password: str
-
-
-# class BearerSchema(BaseModel):
-#     access_token: str
-#     role: str
-#     token_type: Literal['bearer'] = 'bearer'
-
-# class UserSchema(BaseModel):
-#     role_id: int
-#     name: str
-#     surname: str
-#     gender: str
-#     paternity: str | None = None
-#     birthdate: datetime | None = None
-#     login: str
-#     password: str
-
-# class SubjectSchema(BaseModel):
-#     id: PositiveInt | None
-#     name: str
-#     description: str
-#     type: Literal['sport', 'art', 'free', 'paid']
-
-
-# class TeacherSchema(BaseModel):
-#     name: str
-#     surname: str
-#     paternity: str | None
-
-
-# class ScheduleSchema(BaseModel):
-#     date_n_time: datetime
-#     cabinet: str
-#     subject: SubjectSchema
-#     teacher: TeacherSchema
-
-
-# class SchedulesSchema(BaseModel):
-#     date: date
-#     day_name: str
-#     schedules: list[ScheduleSchema]

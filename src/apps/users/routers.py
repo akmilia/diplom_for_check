@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select 
-from sqlalchemy.orm import contains_eager
+from typing import  Any 
 
 from apps.users.models import (
-    Users, Roles, Attendance, t_scheduleshow, t_subjectsshow, t_usersshow,  t_groups_users, Subjects # type: ignore
+    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow,  t_groups_users, Subjects # type: ignore
 )
 from apps.users.schema import (
-    BearerSchema, LoginSchema, UserResponseSchema, 
+    BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, 
     SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserCreateSchema # type: ignore
 )
 from database.manager import AsyncSession, get_session
@@ -69,40 +69,57 @@ async def get_users(session: AsyncSession = Depends(get_session)):
 async def get_teachers(session: AsyncSession = Depends(get_session)):
     query = select(t_usersshow).where(t_usersshow.c.idroles == 2)
     result = await session.execute(query)
-    return result.mappings().all()
+    return result.mappings().all() 
 
 @router.get('/subjects', response_model=list[SubjectSchema])
-async def get_subjects(
-       session: AsyncSession = Depends(get_session)
-):
-    query = (
-        select(Subjects)
-        .options(contains_eager(Subjects.types))
-        .join(Subjects.types)
-    )
+async def get_subjects(session: AsyncSession = Depends(get_session)):
+    query = select(t_subjects_with_types)
+    result = await session.execute(query)
+    subjects = result.mappings().all()
     
-    db_subjects = (await session.execute(query)).unique().scalars().all()
-    
-    if not db_subjects:
+    if not subjects:
         raise HTTPException(status_code=404, detail='Предметы не найдены')
     
-    # Преобразуем в формат ответа
-    return [
-        {
-            "subject_id": subject.idsubjects,
-            "subject_name": subject.name,
-            "description": subject.description or "",
-            "types": [
-                {
-                    "type_id": type_.id,
-                    "type_name": type_.type or "Не указан"
-                }
-                for type_ in subject.types
-            ]
-        }
-        for subject in db_subjects
-    ]
+    # Преобразуем данные к нужному формату
+    formatted_subjects: list[dict[str, Any]] = []
+    for subj in subjects:
+        formatted_types: list[dict[str, Any]] = []
+        if subj.types:
+            for type_data in subj.types:
+                formatted_types.append({
+                    "id": type_data.get("id"),  # учитываем оба варианта
+                    "type": type_data.get("type")  # учитываем оба варианта
+                })
+        
+        formatted_subjects.append({
+            "subject_id": subj.subject_id,
+            "subject_name": subj.subject_name,
+            "description": subj.description or "",
+            "types": formatted_types
+        })
+    
+    return formatted_subjects
 
+@router.get('/types', response_model=list[TypeSchema])
+async def get_types(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Types))
+    types = result.scalars().all()
+    return types
+
+@router.post("/enroll/")
+async def enroll_to_subject(
+    user_id: int, 
+    subject_id: int,
+    session: AsyncSession = Depends(get_session)
+):
+    # Проверка, что пользователь существует
+    user = await session.get(Users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Логика записи на предмет
+    # ...
+    return {"status": "success"}
 # @router.get('/schedule', response_model=list[ScheduleEntrySchema])
 # async def get_schedule( 
 #     day_of_week: str,

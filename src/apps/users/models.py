@@ -1,5 +1,5 @@
 from typing import List, Optional # type: ignore
-from sqlalchemy import Boolean, Column, Date, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, Table, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, Column, JSON,  Date, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, Table, Text, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 import datetime
@@ -78,6 +78,14 @@ t_subjectsshow = Table(
     Column('type_name', String(45))
 )
 
+t_subjects_with_types = Table(
+    'subjects_with_types', 
+    Base.metadata,
+    Column('subject_id', Integer, primary_key=True),
+    Column('subject_name', String(45)),
+    Column('description', String(150)),
+    Column('types', JSON)  # Для хранения JSON-массива типов
+)
 
 class Types(Base):
     __tablename__ = 'types'
