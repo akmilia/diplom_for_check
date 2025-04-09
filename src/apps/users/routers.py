@@ -7,7 +7,7 @@ from apps.users.models import (
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, 
-    SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserCreateSchema # type: ignore
+    SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema # type: ignore
 )
 from database.manager import AsyncSession, get_session
 
@@ -87,8 +87,8 @@ async def get_subjects(session: AsyncSession = Depends(get_session)):
         if subj.types:
             for type_data in subj.types:
                 formatted_types.append({
-                    "id": type_data.get("id"),  # учитываем оба варианта
-                    "type": type_data.get("type")  # учитываем оба варианта
+                    "id": type_data.get("id"), 
+                    "type": type_data.get("type")  
                 })
         
         formatted_subjects.append({
@@ -120,40 +120,6 @@ async def enroll_to_subject(
     # Логика записи на предмет
     # ...
     return {"status": "success"}
-# @router.get('/schedule', response_model=list[ScheduleEntrySchema])
-# async def get_schedule( 
-#     day_of_week: str,
-#     group_id: int | None,
-#     session: AsyncSession = Depends(get_session), 
-# ) -> list[ScheduleEntrySchema]:
-#     # Базовый запрос к представлению
-#     query = select(t_scheduleshow)
-    
-#     # Применяем фильтры
-#     if day_of_week:
-#         query = query.where(t_scheduleshow.c.day_of_week == day_of_week)
-#     if group_id:
-#         query = query.where(t_scheduleshow.c.group_nam == str(group_id))
-    
-#     # Выполняем запрос
-#     result = (await session.execute(query)).all()
-    
-#     if not result:
-#         raise HTTPException(status_code=404, detail='Расписание не найдено')
-    
-#     # Форматируем ответ
-#     return [
-#         ScheduleEntrySchema(
-#             idschedule=row.idschedule,
-#             time=row.time.strftime("%H:%M"),
-#             subject_name=row.subject_name,
-#             teacher=ScheduleTeacherSchema.from_string(row.teacher),
-#             cabinet=str(row.cabinet),
-#             group_name=row.group_nam,
-#             day_of_week=row.day_of_week
-#         )
-#         for row in result
-#     ] 
 
 @router.get("/schedule", response_model=list[ScheduleEntrySchema])
 async def get_schedule(
