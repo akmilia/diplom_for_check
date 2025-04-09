@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select 
-from typing import  Any 
 
 from apps.users.models import (
     Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow,  t_groups_users, Subjects # type: ignore
@@ -71,34 +70,66 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
     result = await session.execute(query)
     return result.mappings().all() 
 
-@router.get('/subjects', response_model=list[SubjectSchema])
-async def get_subjects(session: AsyncSession = Depends(get_session)):
-    query = select(t_subjects_with_types)
-    result = await session.execute(query)
-    subjects = result.mappings().all()
+# @router.get('/subjects', response_model=list[SubjectSchema])
+# async def get_subjects(session: AsyncSession = Depends(get_session)):
+#     query = select(t_subjects_with_types)
+#     result = await session.execute(query)
+#     subjects = result.mappings().all()
     
-    if not subjects:
-        raise HTTPException(status_code=404, detail='Предметы не найдены')
+#     if not subjects:
+#         raise HTTPException(status_code=404, detail='Предметы не найдены')
     
-    # Преобразуем данные к нужному формату
-    formatted_subjects: list[dict[str, Any]] = []
-    for subj in subjects:
-        formatted_types: list[dict[str, Any]] = []
-        if subj.types:
-            for type_data in subj.types:
-                formatted_types.append({
-                    "id": type_data.get("id"), 
-                    "type": type_data.get("type")  
-                })
+#     # Преобразуем данные к нужному формату
+#     formatted_subjects: list[dict[str, Any]] = []
+#     for subj in subjects:
+#         formatted_types: list[dict[str, Any]] = []
+#         if subj.types:
+#             for type_data in subj.types:
+#                 formatted_types.append({
+#                     "id": type_data.get("id"), 
+#                     "type": type_data.get("type")  
+#                 })
         
-        formatted_subjects.append({
-            "subject_id": subj.subject_id,
-            "subject_name": subj.subject_name,
-            "description": subj.description or "",
-            "types": formatted_types
-        })
+#         formatted_subjects.append({
+#             "subject_id": subj.subject_id,
+#             "subject_name": subj.subject_name,
+#             "description": subj.description or "",
+#             "types": formatted_types
+#         })
     
-    return formatted_subjects
+#     return formatted_subjects 
+
+# @router.get('/subjects', response_model=list[SubjectSchema])
+# async def get_subjects( # type: ignore
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     query = select(t_subjects_with_types)
+#     result = await session.execute(query)
+#     subjects = result.mappings().all()
+    
+#     return [
+#         {
+#             "subject_id": subj.subject_id,
+#             "subject_name": subj.subject_name,
+#             "description": subj.description or "",
+#             "types": subj.types or []  # JSON автоматически преобразуется в список словарей
+#         }
+#         for subj in subjects
+#     ] # type: ignore 
+
+@router.get('/subjects', response_model=list[SubjectSchema])
+async def get_subjects(
+    session: AsyncSession = Depends(get_session)
+) -> list[SubjectSchema]:
+    """
+    Получение списка предметов с валидацией через Pydantic.
+    """
+    result = await session.execute(select(t_subjects_with_types))
+    rows = result.mappings().all()
+    
+    # Явное преобразование с валидацией
+    return [SubjectSchema(**dict(row)) for row in rows] 
+
 
 @router.get('/types', response_model=list[TypeSchema])
 async def get_types(session: AsyncSession = Depends(get_session)):
