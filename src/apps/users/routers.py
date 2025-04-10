@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select 
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select , func
 
 from apps.users.models import (
-    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow,  t_groups_users, Subjects, Groups, GroupsUsers # type: ignore
+    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow, Subjects, Groups, GroupsUsers # type: ignore
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
@@ -24,6 +25,13 @@ router.include_router(common_router)
 router.include_router(teacher_router)
 router.include_router(student_router)
 
+@router.get("/protected-route")
+async def protected_route(
+    current_user_id: int = Depends(get_current_user_id),
+    current_user_role: str = Depends(get_current_user_role)
+):
+    # Ваша логика
+    return {"message": "Доступ разрешен"}
 
 @router.post('/login', response_model=BearerSchema)
 async def login( 
@@ -117,18 +125,10 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
 #         for subj in subjects
 #     ] # type: ignore 
 
-@router.get('/subjects', response_model=list[GroupSchema])
-async def get_groups(
-    session: AsyncSession = Depends(get_session)
-) -> list[GroupSchema]:
- 
-    result = await session.execute(select(Groups))
-    rows = result.mappings().all()
-    
-    # Явное преобразование с валидацией
-    return [GroupSchema(**dict(row)) for row in rows] 
 
-@router.get('/groups', response_model=list[SubjectSchema])
+
+
+@router.get('/subjects', response_model=list[SubjectSchema])
 async def get_subjects(
     session: AsyncSession = Depends(get_session)
 ) -> list[SubjectSchema]:
@@ -141,7 +141,13 @@ async def get_subjects(
     # Явное преобразование с валидацией
     return [SubjectSchema(**dict(row)) for row in rows] 
  
-
+@router.get('/groups', response_model=list[GroupSchema])
+async def get_groups(
+    session: AsyncSession = Depends(get_session)
+):
+    result = await session.execute(select(Groups))
+    rows = result.scalars().all()
+    return rows
 
 @router.get('/types', response_model=list[TypeSchema])
 async def get_types(session: AsyncSession = Depends(get_session)):
@@ -149,38 +155,84 @@ async def get_types(session: AsyncSession = Depends(get_session)):
     types = result.scalars().all()
     return types
 
+# @router.post('/enroll/group')
+# async def enroll_to_group(
+#     idgroups: int,  # Принимаем JSON с groupId
+#     current_user_id: int = Depends(get_current_user_id),
+#     current_user_role: str = Depends(get_current_user_role),
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     if current_user_role != "Ученик":
+#         raise HTTPException(status_code=403, detail="Only students can enroll")
+
+#     if not idgroups:
+#         raise HTTPException(status_code=400, detail="Group ID is required")
+
+#     # Проверяем, не записан ли уже пользователь
+#     existing = await session.execute(
+#         select(GroupsUsers).where(
+#             GroupsUsers.groups_idgroups == idgroups,
+#             GroupsUsers.users_idusers == current_user_id
+#         )
+#     )
+#     if existing.scalar():
+#         raise HTTPException(status_code=400, detail="Already enrolled")
+
+#     # Проверяем количество записей для группы
+#     count = await session.execute(
+#         select(func.count()).select_from(GroupsUsers).where(GroupsUsers.groups_idgroups == idgroups)
+#     )
+#     if count.scalar() >= 20: # type: ignore
+#         raise HTTPException(status_code=400, detail="Group is full")
+
+#     # Добавляем запись
+#     enrollment = GroupsUsers(
+#         groups_idgroups=idgroups,
+#         users_idusers=current_user_id
+#     )
+#     session.add(enrollment)
+#     await session.commit()
+
+#     return {"message": "Enrollment successful"}  
+
+    
 @router.post('/enroll/group')
-async def enroll_to_group(
-    group_id: int,
-    current_user: User = Depends(get_current_user),
+async def enroll_to_group( 
+    request: Request,
+    group_id: int,  # Принимаем ID группы напрямую из тела запроса
+    current_user_id: int = Depends(get_current_user_id),
+    current_user_role: str = Depends(get_current_user_role),
     session: AsyncSession = Depends(get_session)
 ):
-    if current_user.role != "Ученик":
+    print(f"Токен: {request.headers.get('authorization')}")  # Для отладки
+    print(f"Данные: {await request.body()}")  # type: ignore 
+
+    if current_user_role != "Ученик":
         raise HTTPException(status_code=403, detail="Only students can enroll")
 
-    # Проверяем, не записан ли уже пользователь
+    # Проверяем существующую запись
     existing = await session.execute(
         select(GroupsUsers).where(
             GroupsUsers.groups_idgroups == group_id,
-            GroupsUsers.users_idusers == current_user.idusers
+            GroupsUsers.users_idusers == current_user_id
         )
     )
     if existing.scalar():
         raise HTTPException(status_code=400, detail="Already enrolled")
 
-    # Проверяем количество записей для группы
-    count = await session.execute(
-        select(func.count()).select_from(GroupsUsers).where(GroupsUsers.groups_idgroups == group_id)
+    # Проверяем количество участников группы
+    count = await session.scalar(
+        select(func.count()).where(GroupsUsers.groups_idgroups == group_id)
     )
-    if count.scalar() >= 20:
+    
+    if count >= 20: # type: ignore
         raise HTTPException(status_code=400, detail="Group is full")
 
-    # Добавляем запись
-    enrollment = GroupsUsers(
+    # Создаем запись
+    session.add(GroupsUsers(
         groups_idgroups=group_id,
-        users_idusers=current_user.idusers
-    )
-    session.add(enrollment)
+        users_idusers=current_user_id
+    ))
     await session.commit()
 
     return {"message": "Enrollment successful"}
@@ -196,7 +248,7 @@ async def get_schedule(
     """
     if role == "Ученик":
         # Логика для ученика
-        groups_query = select(t_groups_users).where(t_groups_users.c.users_idusers == user_id)
+        groups_query = select(GroupsUsers).where(GroupsUsers.users_idusers == user_id)
         user_groups = (await session.execute(groups_query)).scalars().all()
         
         if not user_groups:

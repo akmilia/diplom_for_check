@@ -1,7 +1,7 @@
 from uvicorn import Config, Server
 from core.config import settings
 from core.log import config as log_config
-from core.main import app  # Импортируем app из main.py
+from core.main import app  # type: ignore
 
 def main():
     config = Config(
