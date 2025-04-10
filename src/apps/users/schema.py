@@ -29,10 +29,8 @@ class UserCreateSchema(BaseModel):
 class UserResponseSchema(BaseModel):
     idusers: int
     login: str 
-    password: str
     full_name: str
     idroles: int
-    user_role: str  
 
     class Config:
         from_attributes = True
@@ -69,11 +67,9 @@ class SubjectSchema(BaseModel):
                 ]
             }
         }
-class SubjectCreateSchema(BaseModel): 
+class GroupSchema(BaseModel): 
+    idgroups: int
     name: str
-    description: str
-    type_ids: list[int]  # Список типов предмета
-
     class Config:
         from_attributes = True  
 

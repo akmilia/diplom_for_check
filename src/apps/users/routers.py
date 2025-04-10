@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select 
 
 from apps.users.models import (
-    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow,  t_groups_users, Subjects # type: ignore
+    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow,  t_groups_users, Subjects, Groups, GroupsUsers # type: ignore
 )
 from apps.users.schema import (
-    BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, 
+    BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
     SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema # type: ignore
 )
 from database.manager import AsyncSession, get_session
@@ -117,7 +117,18 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
 #         for subj in subjects
 #     ] # type: ignore 
 
-@router.get('/subjects', response_model=list[SubjectSchema])
+@router.get('/subjects', response_model=list[GroupSchema])
+async def get_groups(
+    session: AsyncSession = Depends(get_session)
+) -> list[GroupSchema]:
+ 
+    result = await session.execute(select(Groups))
+    rows = result.mappings().all()
+    
+    # Явное преобразование с валидацией
+    return [GroupSchema(**dict(row)) for row in rows] 
+
+@router.get('/groups', response_model=list[SubjectSchema])
 async def get_subjects(
     session: AsyncSession = Depends(get_session)
 ) -> list[SubjectSchema]:
@@ -129,6 +140,7 @@ async def get_subjects(
     
     # Явное преобразование с валидацией
     return [SubjectSchema(**dict(row)) for row in rows] 
+ 
 
 
 @router.get('/types', response_model=list[TypeSchema])
@@ -137,20 +149,41 @@ async def get_types(session: AsyncSession = Depends(get_session)):
     types = result.scalars().all()
     return types
 
-@router.post("/enroll/")
-async def enroll_to_subject(
-    user_id: int, 
-    subject_id: int,
+@router.post('/enroll/group')
+async def enroll_to_group(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    # Проверка, что пользователь существует
-    user = await session.get(Users, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Логика записи на предмет
-    # ...
-    return {"status": "success"}
+    if current_user.role != "Ученик":
+        raise HTTPException(status_code=403, detail="Only students can enroll")
+
+    # Проверяем, не записан ли уже пользователь
+    existing = await session.execute(
+        select(GroupsUsers).where(
+            GroupsUsers.groups_idgroups == group_id,
+            GroupsUsers.users_idusers == current_user.idusers
+        )
+    )
+    if existing.scalar():
+        raise HTTPException(status_code=400, detail="Already enrolled")
+
+    # Проверяем количество записей для группы
+    count = await session.execute(
+        select(func.count()).select_from(GroupsUsers).where(GroupsUsers.groups_idgroups == group_id)
+    )
+    if count.scalar() >= 20:
+        raise HTTPException(status_code=400, detail="Group is full")
+
+    # Добавляем запись
+    enrollment = GroupsUsers(
+        groups_idgroups=group_id,
+        users_idusers=current_user.idusers
+    )
+    session.add(enrollment)
+    await session.commit()
+
+    return {"message": "Enrollment successful"}
 
 @router.get("/schedule", response_model=list[ScheduleEntrySchema])
 async def get_schedule(
