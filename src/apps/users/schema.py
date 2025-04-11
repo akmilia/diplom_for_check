@@ -27,9 +27,10 @@ class UserCreateSchema(BaseModel):
     role_id: int  # Ссылка на roles.idroles
 
 class UserResponseSchema(BaseModel):
-    idusers: int
-    login: str 
+    idusers: int 
     full_name: str
+    login: str 
+    birthdate: date
     idroles: int
 
     class Config:

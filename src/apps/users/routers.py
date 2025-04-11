@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select , func
 
 from apps.users.models import (
-    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow, Subjects, Groups, GroupsUsers # type: ignore
+    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow, Subjects, Groups, GroupsUsers, Schedule# type: ignore
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
@@ -24,14 +24,6 @@ router.include_router(auth_router)
 router.include_router(common_router)
 router.include_router(teacher_router)
 router.include_router(student_router)
-
-@router.get("/protected-route")
-async def protected_route(
-    current_user_id: int = Depends(get_current_user_id),
-    current_user_role: str = Depends(get_current_user_role)
-):
-    # Ваша логика
-    return {"message": "Доступ разрешен"}
 
 @router.post('/login', response_model=BearerSchema)
 async def login( 
@@ -76,7 +68,46 @@ async def get_users(session: AsyncSession = Depends(get_session)):
 async def get_teachers(session: AsyncSession = Depends(get_session)):
     query = select(t_usersshow).where(t_usersshow.c.idroles == 2)
     result = await session.execute(query)
-    return result.mappings().all() 
+    return result.mappings().all()  
+
+
+@router.get('/current-user', response_model=UserResponseSchema)
+async def get_current_user_profile(
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_session)
+):
+    """Получение данных текущего пользователя"""
+    user = await session.get(Users, current_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user 
+
+@router.get('/user-courses', response_model=list[str])  # Явно указываем тип возвращаемых данных
+async def get_user_courses(
+    current_user_id: int = Depends(get_current_user_id),
+    current_user_role: str = Depends(get_current_user_role),
+    session: AsyncSession = Depends(get_session)
+) -> list[str]:  # Добавляем аннотацию типа возвращаемого значения
+   
+    if current_user_role == "Преподаватель":
+        # Для преподавателя - предметы из расписания
+        result = await session.execute(
+            select(Subjects.name)
+            .join(Schedule, Schedule.subjects_idsubjects == Subjects.idsubjects)
+            .where(Schedule.users_idusers == current_user_id)
+            .distinct()
+        )
+    elif current_user_role == "Ученик":
+        # Для ученика - группы, в которых он состоит
+        result = await session.execute(
+            select(Groups.name)
+            .join(GroupsUsers, GroupsUsers.groups_idgroups == Groups.idgroups)
+            .where(GroupsUsers.users_idusers == current_user_id)
+        )
+    else:
+        return []
+    
+    return [row[0] for row in result.all()]
 
 # @router.get('/subjects', response_model=list[SubjectSchema])
 # async def get_subjects(session: AsyncSession = Depends(get_session)):
