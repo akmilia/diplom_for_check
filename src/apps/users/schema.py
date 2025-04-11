@@ -30,12 +30,21 @@ class UserResponseSchema(BaseModel):
     idusers: int 
     full_name: str
     login: str 
-    birthdate: date
     idroles: int
 
     class Config:
         from_attributes = True
 
+
+class UserResponseSchemaBithdate(BaseModel):
+    idusers: int 
+    full_name: str
+    login: str 
+    birthdate: date
+    idroles: int
+
+    class Config:
+        from_attributes = True 
 # Предметы
 
 class TypeSchema(BaseModel):

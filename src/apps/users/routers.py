@@ -7,7 +7,7 @@ from apps.users.models import (
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
-    SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema # type: ignore
+    SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserResponseSchemaBithdate # type: ignore
 )
 from database.manager import AsyncSession, get_session
 
@@ -71,7 +71,7 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
     return result.mappings().all()  
 
 
-@router.get('/current-user', response_model=UserResponseSchema)
+@router.get('/current-user', response_model=UserResponseSchemaBithdate)
 async def get_current_user_profile(
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session)
