@@ -55,7 +55,8 @@ async def login(
     return BearerSchema(
         access_token=encoded_jwt,
         role=role.name,
-        token_type="bearer"
+        token_type="bearer",
+        user_id=user.idusers
     )
 
 @router.get('/users', response_model=list[UserResponseSchema])

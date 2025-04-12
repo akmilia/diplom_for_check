@@ -15,6 +15,7 @@ class BearerSchema(BaseModel):
     access_token: str
     role: str  # Например, "admin", "teacher", "student"
     token_type: Literal['bearer'] = 'bearer'
+    user_id: int
 
 # Пользователи
 class UserCreateSchema(BaseModel):
