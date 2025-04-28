@@ -13,7 +13,8 @@ class SessionSchema(BaseModel):
     
 class BearerSchema(BaseModel):
     access_token: str
-    role: str  # Например, "admin", "teacher", "student"
+    refresh_token: str 
+    role: str 
     token_type: Literal['bearer'] = 'bearer'
     user_id: int
 

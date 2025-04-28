@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from sqlalchemy import select , func
 
 from apps.users.models import (
@@ -10,9 +10,10 @@ from apps.users.schema import (
     SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserResponseSchemaBithdate # type: ignore
 )
 from database.manager import AsyncSession, get_session
+from jose import jwt, JWTError
 
-from middlewares.security import encode, SECRET_KEY, ALGORITHM
-from middlewares.security import student_required, teacher_required, get_current_user_id, get_current_user_role
+from middlewares.security import encode, SECRET_KEY, ALGORITHM # type: ignore
+from middlewares.security import student_required, teacher_required, get_current_user_id, get_current_user_role, create_tokens
 
 common_router = APIRouter(prefix="/api", tags=["Common"])
 teacher_router = APIRouter(prefix="", tags=["Teacher"], dependencies=[Depends(teacher_required)])
@@ -23,14 +24,39 @@ router = APIRouter()
 router.include_router(auth_router)
 router.include_router(common_router)
 router.include_router(teacher_router)
-router.include_router(student_router)
+router.include_router(student_router) 
 
-@router.post('/login', response_model=BearerSchema)
-async def login( 
-    login_data: LoginSchema, 
+@router.post('/refresh', response_model=BearerSchema)
+async def refresh_token(
+    refresh_token: str = Body(..., embed=True),
     session: AsyncSession = Depends(get_session)
 ):
-    # Ищем пользователя по логину и паролю
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
+        
+        user = await session.get(Users, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        role = (await session.execute(
+            select(Roles).where(Roles.idroles == user.roles_idroles)
+        )).scalar_one()
+
+        tokens = create_tokens(user.idusers, role.name)
+
+        return {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+            "role": role.name,
+            "user_id": user.idusers
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+
+@router.post('/login', response_model=BearerSchema)
+async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_session)):
     user = (await session.execute(
         select(Users)
         .where(Users.login == login_data.login)
@@ -40,24 +66,18 @@ async def login(
     if not user:
         raise HTTPException(status_code=404, detail='Пользователь не найден')
 
-    # Получаем роль пользователя
     role = (await session.execute(
         select(Roles).where(Roles.idroles == user.roles_idroles)
     )).scalar_one()
 
-    # Генерируем токен (ваша текущая реализация)
-    encoded_jwt = str(encode(
-        {"role": role.name, "user_id": user.idusers},
-        SECRET_KEY,
-        algorithm=ALGORITHM
-    ))
+    tokens = create_tokens(user.idusers, role.name)  # Используем новую функцию
 
-    return BearerSchema(
-        access_token=encoded_jwt,
-        role=role.name,
-        token_type="bearer",
-        user_id=user.idusers
-    )
+    return {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "role": role.name,
+        "user_id": user.idusers
+    }
 
 @router.get('/users', response_model=list[UserResponseSchema])
 async def get_users(session: AsyncSession = Depends(get_session)):
@@ -77,7 +97,6 @@ async def get_current_user_profile(
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session)
 ):
-    """Получение данных текущего пользователя"""
     user = await session.get(Users, current_user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -110,56 +129,6 @@ async def get_user_courses(
     
     return [row[0] for row in result.all()]
 
-# @router.get('/subjects', response_model=list[SubjectSchema])
-# async def get_subjects(session: AsyncSession = Depends(get_session)):
-#     query = select(t_subjects_with_types)
-#     result = await session.execute(query)
-#     subjects = result.mappings().all()
-    
-#     if not subjects:
-#         raise HTTPException(status_code=404, detail='Предметы не найдены')
-    
-#     # Преобразуем данные к нужному формату
-#     formatted_subjects: list[dict[str, Any]] = []
-#     for subj in subjects:
-#         formatted_types: list[dict[str, Any]] = []
-#         if subj.types:
-#             for type_data in subj.types:
-#                 formatted_types.append({
-#                     "id": type_data.get("id"), 
-#                     "type": type_data.get("type")  
-#                 })
-        
-#         formatted_subjects.append({
-#             "subject_id": subj.subject_id,
-#             "subject_name": subj.subject_name,
-#             "description": subj.description or "",
-#             "types": formatted_types
-#         })
-    
-#     return formatted_subjects 
-
-# @router.get('/subjects', response_model=list[SubjectSchema])
-# async def get_subjects( # type: ignore
-#     session: AsyncSession = Depends(get_session)
-# ):
-#     query = select(t_subjects_with_types)
-#     result = await session.execute(query)
-#     subjects = result.mappings().all()
-    
-#     return [
-#         {
-#             "subject_id": subj.subject_id,
-#             "subject_name": subj.subject_name,
-#             "description": subj.description or "",
-#             "types": subj.types or []  # JSON автоматически преобразуется в список словарей
-#         }
-#         for subj in subjects
-#     ] # type: ignore 
-
-
-
-
 @router.get('/subjects', response_model=list[SubjectSchema])
 async def get_subjects(
     session: AsyncSession = Depends(get_session)
@@ -170,7 +139,6 @@ async def get_subjects(
     result = await session.execute(select(t_subjects_with_types))
     rows = result.mappings().all()
     
-    # Явное преобразование с валидацией
     return [SubjectSchema(**dict(row)) for row in rows] 
  
 @router.get('/groups', response_model=list[GroupSchema])
@@ -227,22 +195,16 @@ async def get_types(session: AsyncSession = Depends(get_session)):
 
 #     return {"message": "Enrollment successful"}  
 
-    
 @router.post('/enroll/group')
-async def enroll_to_group( 
-    request: Request,
-    group_id: int,  # Принимаем ID группы напрямую из тела запроса
+async def enroll_to_group(
+    group_id: int = Body(..., embed=True),
     current_user_id: int = Depends(get_current_user_id),
     current_user_role: str = Depends(get_current_user_role),
     session: AsyncSession = Depends(get_session)
 ):
-    print(f"Токен: {request.headers.get('authorization')}")  # Для отладки
-    print(f"Данные: {await request.body()}")  # type: ignore 
-
     if current_user_role != "Ученик":
         raise HTTPException(status_code=403, detail="Only students can enroll")
 
-    # Проверяем существующую запись
     existing = await session.execute(
         select(GroupsUsers).where(
             GroupsUsers.groups_idgroups == group_id,
@@ -252,15 +214,13 @@ async def enroll_to_group(
     if existing.scalar():
         raise HTTPException(status_code=400, detail="Already enrolled")
 
-    # Проверяем количество участников группы
     count = await session.scalar(
         select(func.count()).where(GroupsUsers.groups_idgroups == group_id)
     )
-    
-    if count >= 20: # type: ignore
+
+    if count >= 20:  # type: ignore
         raise HTTPException(status_code=400, detail="Group is full")
 
-    # Создаем запись
     session.add(GroupsUsers(
         groups_idgroups=group_id,
         users_idusers=current_user_id
@@ -268,6 +228,46 @@ async def enroll_to_group(
     await session.commit()
 
     return {"message": "Enrollment successful"}
+# @router.post('/enroll/group')
+# async def enroll_to_group( 
+#     request: Request,
+#     group_id: int,  # Принимаем ID группы напрямую из тела запроса
+#     current_user_id: int = Depends(get_current_user_id),
+#     current_user_role: str = Depends(get_current_user_role),
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     print(f"Токен: {request.headers.get('authorization')}")  # Для отладки
+#     print(f"Данные: {await request.body()}")  # type: ignore 
+
+#     if current_user_role != "Ученик":
+#         raise HTTPException(status_code=403, detail="Only students can enroll")
+
+#     # Проверяем существующую запись
+#     existing = await session.execute(
+#         select(GroupsUsers).where(
+#             GroupsUsers.groups_idgroups == group_id,
+#             GroupsUsers.users_idusers == current_user_id
+#         )
+#     )
+#     if existing.scalar():
+#         raise HTTPException(status_code=400, detail="Already enrolled")
+
+#     # Проверяем количество участников группы
+#     count = await session.scalar(
+#         select(func.count()).where(GroupsUsers.groups_idgroups == group_id)
+#     )
+    
+#     if count >= 20: # type: ignore
+#         raise HTTPException(status_code=400, detail="Group is full")
+
+#     # Создаем запись
+#     session.add(GroupsUsers(
+#         groups_idgroups=group_id,
+#         users_idusers=current_user_id
+#     ))
+#     await session.commit()
+
+#     return {"message": "Enrollment successful"}
 
 @router.get("/schedule", response_model=list[ScheduleEntrySchema])
 async def get_schedule(
