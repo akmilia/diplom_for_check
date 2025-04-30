@@ -7,17 +7,21 @@ class LoginSchema(BaseModel):
     login: str
     password: str
 
-class SessionSchema(BaseModel):
+class TokenPayload(BaseModel):
+    user_id: int
     role: str
-    user_id: int 
-    
-class BearerSchema(BaseModel):
+    exp: datetime
+
+class BearerSchema(TokenPayload):
     access_token: str
     refresh_token: str 
-    role: str 
     token_type: Literal['bearer'] = 'bearer'
-    user_id: int
 
+class ErrorResponse(BaseModel):
+    detail: str
+    status_code: int 
+
+    
 # Пользователи
 class UserCreateSchema(BaseModel):
     name: str

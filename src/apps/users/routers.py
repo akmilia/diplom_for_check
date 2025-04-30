@@ -1,5 +1,4 @@
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy import select , func
 
 from apps.users.models import (
@@ -102,7 +101,7 @@ async def get_current_user_profile(
         raise HTTPException(status_code=404, detail="User not found")
     return user 
 
-@router.get('/user-courses', response_model=list[str])  # Явно указываем тип возвращаемых данных
+@router.get('/user-courses', response_model=list[str]) 
 async def get_user_courses(
     current_user_id: int = Depends(get_current_user_id),
     current_user_role: str = Depends(get_current_user_role),
@@ -110,7 +109,6 @@ async def get_user_courses(
 ) -> list[str]:  # Добавляем аннотацию типа возвращаемого значения
    
     if current_user_role == "Преподаватель":
-        # Для преподавателя - предметы из расписания
         result = await session.execute(
             select(Subjects.name)
             .join(Schedule, Schedule.subjects_idsubjects == Subjects.idsubjects)
@@ -118,7 +116,6 @@ async def get_user_courses(
             .distinct()
         )
     elif current_user_role == "Ученик":
-        # Для ученика - группы, в которых он состоит
         result = await session.execute(
             select(Groups.name)
             .join(GroupsUsers, GroupsUsers.groups_idgroups == Groups.idgroups)
@@ -133,9 +130,6 @@ async def get_user_courses(
 async def get_subjects(
     session: AsyncSession = Depends(get_session)
 ) -> list[SubjectSchema]:
-    """
-    Получение списка предметов с валидацией через Pydantic.
-    """
     result = await session.execute(select(t_subjects_with_types))
     rows = result.mappings().all()
     
