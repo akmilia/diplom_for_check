@@ -7,16 +7,32 @@ class LoginSchema(BaseModel):
     login: str
     password: str
 
-class TokenPayload(BaseModel):
+class BearerSchema(BaseModel):
+    # Основные поля для ответа
+    access_token: str
+    refresh_token: str
+    token_type: Literal['bearer'] = 'bearer'
+    
+    # Данные пользователя
     user_id: int
     role: str
-    exp: datetime
-
-class BearerSchema(TokenPayload):
-    access_token: str
-    refresh_token: str 
-    token_type: Literal['bearer'] = 'bearer'
-
+    
+    # Время истечения (опционально, но рекомендуется)
+    expires_in: Optional[int] = None #type: ignore
+    expires_at: Optional[datetime] = None #type: ignore
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "access_token": "eyJhbGciOiJIUz...",
+                "refresh_token": "eyJhbGciOiJIUz...",
+                "token_type": "bearer",
+                "user_id": 1,
+                "role": "Преподаватель",
+                "expires_in":1800,
+                "expires_at": "2025-05-01T12:00:00Z"
+            }
+        }
 class ErrorResponse(BaseModel):
     detail: str
     status_code: int 

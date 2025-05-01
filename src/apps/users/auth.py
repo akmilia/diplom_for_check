@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from sqlmodel import select
 from database import AsyncSessionDep
 from apps.users.models import Users
-from apps.users.schema import TokenPayload
+from apps.users.schema import BearerSchema
 
 bearer = HTTPBearer()
 
@@ -16,14 +16,14 @@ ALGORITHM = 'HS256'
 async def user_auth(
     session: AsyncSessionDep, 
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)]
-) -> TokenPayload:
+) -> BearerSchema:
     try:
         payload = jwt.decode(
             credentials.credentials, 
             SECRET_KEY, 
             algorithms=[ALGORITHM]
         )
-        return TokenPayload(**payload)
+        return BearerSchema(**payload)
     except (JWTError, ValidationError) as e:
         raise HTTPException(
             status_code=401, 

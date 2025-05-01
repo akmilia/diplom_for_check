@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import select , func
 
 from apps.users.models import (
@@ -11,7 +12,7 @@ from apps.users.schema import (
 from database.manager import AsyncSession, get_session
 from jose import jwt, JWTError
 
-from middlewares.security import encode, SECRET_KEY, ALGORITHM # type: ignore
+from middlewares.security import SECRET_KEY, ALGORITHM
 from middlewares.security import student_required, teacher_required, get_current_user_id, get_current_user_role, create_tokens
 
 common_router = APIRouter(prefix="/api", tags=["Common"])
@@ -24,6 +25,34 @@ router.include_router(auth_router)
 router.include_router(common_router)
 router.include_router(teacher_router)
 router.include_router(student_router) 
+
+
+@router.post('/login', response_model=BearerSchema)
+async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_session)):
+    user = (await session.execute(
+        select(Users)
+        .where(Users.login == login_data.login)
+        .where(Users.password == login_data.password)
+    )).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail='Пользователь не найден')
+
+    role = (await session.execute(
+        select(Roles).where(Roles.idroles == user.roles_idroles)
+    )).scalar_one()
+
+    tokens = create_tokens(user.idusers, role.name)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    
+    return BearerSchema(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        user_id=user.idusers,
+        role=role.name,
+        expires_in=1800,
+        expires_at=expires_at
+    ) 
 
 @router.post('/refresh', response_model=BearerSchema)
 async def refresh_token(
@@ -43,40 +72,18 @@ async def refresh_token(
         )).scalar_one()
 
         tokens = create_tokens(user.idusers, role.name)
-
-        return {
-            "access_token": tokens["access_token"],
-            "refresh_token": tokens["refresh_token"],
-            "role": role.name,
-            "user_id": user.idusers
-        }
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        
+        return BearerSchema(
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            user_id=user.idusers,
+            role=role.name,
+            expires_in=1800,
+            expires_at=expires_at
+        )
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-
-@router.post('/login', response_model=BearerSchema)
-async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_session)):
-    user = (await session.execute(
-        select(Users)
-        .where(Users.login == login_data.login)
-        .where(Users.password == login_data.password)
-    )).scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail='Пользователь не найден')
-
-    role = (await session.execute(
-        select(Roles).where(Roles.idroles == user.roles_idroles)
-    )).scalar_one()
-
-    tokens = create_tokens(user.idusers, role.name)  # Используем новую функцию
-
-    return {
-        "access_token": tokens["access_token"],
-        "refresh_token": tokens["refresh_token"],
-        "role": role.name,
-        "user_id": user.idusers
-    }
 
 @router.get('/users', response_model=list[UserResponseSchema])
 async def get_users(session: AsyncSession = Depends(get_session)):

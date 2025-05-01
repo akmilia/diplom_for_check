@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException
 from typing import Annotated, Any
 from jose import jwt, JWTError
 from fastapi.security import OAuth2PasswordBearer
-from apps.users.schema import TokenPayload
+from apps.users.schema import BearerSchema
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/login",
@@ -13,50 +13,56 @@ oauth2_scheme = OAuth2PasswordBearer(
 ALGORITHM = "HS256"
 SECRET_KEY = "ваш-секрет-ключ"
 
-def create_tokens(user_id: int, role: str) -> dict[str, str | int]:
-    access_payload = TokenPayload(
-        user_id=user_id,
-        role=role,
-        exp=datetime.now(timezone.utc) + timedelta(minutes=15)
-    ).model_dump()
+def create_tokens(user_id: int, role: str) -> dict[str, Any]:
+    access_exp = datetime.now(timezone.utc) + timedelta(minutes=15)
+    refresh_exp = datetime.now(timezone.utc) + timedelta(days=7)
     
-    refresh_payload = TokenPayload(
-        user_id=user_id,
-        role=role,
-        exp=datetime.now(timezone.utc) + timedelta(days=7)
-    ).model_dump()
-    
-    access_token = jwt.encode(access_payload, SECRET_KEY, algorithm=ALGORITHM)
-    refresh_token = jwt.encode(refresh_payload, SECRET_KEY, algorithm=ALGORITHM)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
+    access_payload = {
+        "user_id": user_id,
         "role": role,
-        "user_id": user_id
+        "exp": access_exp
+    }
+    refresh_payload = {
+        "user_id": user_id,
+        "exp": refresh_exp
+    }
+    
+    return {
+        "access_token": jwt.encode(access_payload, SECRET_KEY, algorithm=ALGORITHM),
+        "refresh_token": jwt.encode(refresh_payload, SECRET_KEY, algorithm=ALGORITHM),
+        "expires_at": access_exp,
+        "expires_in": 1800  
     }
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenPayload:
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> BearerSchema:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return TokenPayload(**payload)
+        return BearerSchema(**payload)
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
 
 async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
     user = await get_current_user(token)
     return user.user_id
 
+
+
 async def get_current_user_role(token: str = Depends(oauth2_scheme)) -> str:
     user = await get_current_user(token)
     return user.role
 
-def teacher_required(user: Annotated[TokenPayload, Depends(get_current_user)]) -> TokenPayload:
+
+def teacher_required(user: Annotated[BearerSchema, Depends(get_current_user)]) -> BearerSchema:
     if user.role != "Преподаватель":
         raise HTTPException(403, "Teacher access required")
     return user
 
-def student_required(user: Annotated[TokenPayload, Depends(get_current_user)]) -> TokenPayload:
+
+def student_required(user: Annotated[BearerSchema, Depends(get_current_user)]) -> BearerSchema:
     if user.role != "Ученик":
         raise HTTPException(403, "Student access required")
     return user
@@ -79,7 +85,7 @@ def create_bearer_response(user_id: int, role: str) -> dict[str, Any]:
 # def encode(data: dict[str, Any], key: str, algorithm: str) -> str:
 #     return jwt.encode(data, key, algorithm=algorithm)
 
-# async def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenPayload:
+# async def get_current_user(token: str = Depends(oauth2_scheme)) -> BearerSchema:
 #     try:
 #         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 #         return payload
@@ -116,12 +122,12 @@ def create_bearer_response(user_id: int, role: str) -> dict[str, Any]:
 #     except JWTError:
 #         raise credentials_exception
 
-# def teacher_required(user: Annotated[TokenPayload, Depends(get_current_user)]):
+# def teacher_required(user: Annotated[BearerSchema, Depends(get_current_user)]):
 #     if user.get("roles_idroles") != 2:
 #         raise HTTPException(403, "Teacher access required")
 #     return user
 
-# def student_required(user: Annotated[TokenPayload, Depends(get_current_user)]):
+# def student_required(user: Annotated[BearerSchema, Depends(get_current_user)]):
 #     if user.get("roles_idroles") != 3:
 #         raise HTTPException(403, "Student access required")
 #     return user;
