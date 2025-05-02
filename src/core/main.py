@@ -4,7 +4,8 @@ from database import lifespan
 from middlewares import register_middlewares
 from .config import settings
 from .exceptions import register_exceptions
-from .router import v1_router
+from apps.users.routers import router
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -15,8 +16,6 @@ app = FastAPI(
     redoc_url='/redoc',
     lifespan=lifespan
 )
-
-
 
 # CORS Middleware
 app.add_middleware(
@@ -35,4 +34,4 @@ app = register_middlewares(app)
 app = register_exceptions(app)
 
 # Подключение роутеров
-app.include_router(v1_router)
+app.include_router(router)

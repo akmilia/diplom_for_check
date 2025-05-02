@@ -13,19 +13,9 @@ from database.manager import AsyncSession, get_session
 from jose import jwt, JWTError
 
 from middlewares.security import SECRET_KEY, ALGORITHM
-from middlewares.security import student_required, teacher_required, get_current_user_id, get_current_user_role, create_tokens
+from middlewares.security import get_current_user_id, get_current_user_role, create_tokens
 
-common_router = APIRouter(prefix="/api", tags=["Common"])
-teacher_router = APIRouter(prefix="", tags=["Teacher"], dependencies=[Depends(teacher_required)])
-student_router = APIRouter(prefix="", tags=["Student"], dependencies=[Depends(student_required)])
-auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-router = APIRouter()
-router.include_router(auth_router)
-router.include_router(common_router)
-router.include_router(teacher_router)
-router.include_router(student_router) 
-
+router = APIRouter(prefix="/api")
 
 @router.post('/login', response_model=BearerSchema)
 async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_session)):
@@ -46,8 +36,9 @@ async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_ses
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
     
     return BearerSchema(
-        access_token=tokens["access_token"],
-        refresh_token=tokens["refresh_token"],
+        access_token=tokens["access_token"], # type: ignore
+        refresh_token=tokens["refresh_token"], # type: ignore 
+        token_type= "bearer", 
         user_id=user.idusers,
         role=role.name,
         expires_in=1800,
@@ -75,8 +66,9 @@ async def refresh_token(
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
         
         return BearerSchema(
-            access_token=tokens["access_token"],
-            refresh_token=tokens["refresh_token"],
+            access_token=tokens["access_token"],  # type: ignore
+            refresh_token=tokens["refresh_token"],  # type: ignore
+            token_type= "bearer",
             user_id=user.idusers,
             role=role.name,
             expires_in=1800,
@@ -87,7 +79,7 @@ async def refresh_token(
 
 @router.get('/users', response_model=list[UserResponseSchema])
 async def get_users(session: AsyncSession = Depends(get_session)):
-    query = select(t_usersshow)  # Представление должно содержать все нужные поля
+    query = select(t_usersshow) 
     result = await session.execute(query)
     return result.mappings().all()
 
@@ -97,16 +89,28 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
     result = await session.execute(query)
     return result.mappings().all()  
 
-
 @router.get('/current-user', response_model=UserResponseSchemaBithdate)
 async def get_current_user_profile(
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session)
-):
-    user = await session.get(Users, current_user_id)
+):  
+    # Получаем данные из представления t_usersshow
+    query = select(t_usersshow).where(t_usersshow.c.idusers == current_user_id)
+    result = await session.execute(query)
+    user = result.mappings().first()  # Используем mappings() для работы с представлениями
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user 
+    
+    return {
+        "idusers": user["idusers"],
+        "full_name": user["full_name"],
+        "login": user["login"],
+        "birthdate": user["birthdate"],
+        "id_roles": user["idroles"],
+        "user_role": user["user_role"]  # Предполагая, что это есть в t_usersshow
+    }
+
 
 @router.get('/user-courses', response_model=list[str]) 
 async def get_user_courses(
@@ -307,22 +311,6 @@ async def get_schedule(
     
     schedule = (await session.execute(schedule_query)).scalars().all()
     return schedule # type: ignore
-
-
-# @router.get('/schedule/days', response_model=dict[str, list[ScheduleEntrySchema]])
-# async def get_schedule_by_days(
-#     group_id: int | None = None,
-#     session: AsyncSession = Depends(get_session)
-# ) -> dict[str, list[ScheduleEntrySchema]]:
-#     days = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-#     result: dict[str, list[ScheduleEntrySchema]] = {}
-    
-#     for day in days:
-#         schedules = await get_schedule(day_of_week=day, group_id=group_id, session=session)
-#         if schedules:
-#             result[day] = schedules
-
-#     return result
 
 @router.get('/schedule/{schedule_id}/dates', response_model=list[str])
 async def get_schedule_dates(

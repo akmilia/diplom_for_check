@@ -37,17 +37,7 @@ class ErrorResponse(BaseModel):
     detail: str
     status_code: int 
 
-    
 # Пользователи
-class UserCreateSchema(BaseModel):
-    name: str
-    surname: str
-    paternity: Optional[str] = None #type: ignore
-    birthdate: Optional[date] = None #type: ignore
-    login: str
-    password: str
-    role_id: int  # Ссылка на roles.idroles
-
 class UserResponseSchema(BaseModel):
     idusers: int 
     full_name: str
@@ -57,14 +47,13 @@ class UserResponseSchema(BaseModel):
     class Config:
         from_attributes = True
 
-
 class UserResponseSchemaBithdate(BaseModel):
     idusers: int 
     full_name: str
     login: str 
     birthdate: date
-    idroles: int
-
+    id_roles: int
+    user_role: str
     class Config:
         from_attributes = True 
 # Предметы
