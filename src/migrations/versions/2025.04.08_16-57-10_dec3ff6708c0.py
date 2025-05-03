@@ -81,7 +81,28 @@ def create_users_view():
     """)
 
 def drop_users_view():
-    op.execute("DROP VIEW IF EXISTS usersshow")  
+    op.execute("DROP VIEW IF EXISTS usersshow")   
+    
+    
+view_users_birth_query = """
+SELECT u.idusers,
+    u.login,
+    u.birthdate,
+    (((u.surname::text || ' '::text) || u.name::text) || ' '::text) || u.paternity::text AS full_name,
+    r.idroles,
+    r.name AS user_role
+FROM users u
+     JOIN roles r ON u.roles_idroles = r.idroles;
+"""
+
+def create_users_birth_view():
+    op.execute(f"""
+    CREATE OR REPLACE VIEW usersshow_with_birthdate AS
+    {view_users_birth_query}
+    """)
+
+def drop_users_birth_view():
+    op.execute("DROP VIEW IF EXISTS usersshow_with_birthdate")  
 
 view_subjects_query = """
  SELECT s.idsubjects AS subject_id,

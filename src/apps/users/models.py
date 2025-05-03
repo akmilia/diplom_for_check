@@ -109,6 +109,17 @@ t_usersshow = Table(
     Column('user_role', String(25))
 )
 
+t_usersshow_with_birthdate = Table(
+    'usersshow_with_birthdate', Base.metadata,
+    Column('idusers', Integer),
+    Column('login', String(250)),
+    Column('birthdate', Date),
+    Column('full_name', Text),
+    Column('idroles', Integer),
+    Column('user_role', String(25)),
+    schema='public'
+)
+
 class TypesSubjects(Base):
     __tablename__ = 'types_subjects'
     __table_args__ = (
@@ -151,15 +162,6 @@ class Users(Base):
     roles: Mapped['Roles'] = relationship('Roles', back_populates='users')
     schedule: Mapped[List['Schedule']] = relationship('Schedule', back_populates='users') # type: ignore
 
-
-# t_groups_users = Table(
-#     'groups_users', Base.metadata,
-#     Column('groups_idgroups', Integer, primary_key=True, nullable=False),
-#     Column('users_idusers', Integer, primary_key=True, nullable=False),
-#     ForeignKeyConstraint(['groups_idgroups'], ['groups.idgroups'], name='groups_users_groups_idgroups_fkey'),
-#     ForeignKeyConstraint(['users_idusers'], ['users.idusers'], name='groups_users_users_idusers_fkey'),
-#     PrimaryKeyConstraint('groups_idgroups', 'users_idusers', name='groups_users_pkey')
-# )
  
 class GroupsUsers(Base):
     __tablename__ = 'groups_users'

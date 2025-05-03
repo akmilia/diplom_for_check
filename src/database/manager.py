@@ -37,7 +37,7 @@ class DBManager:
             max_overflow=20,
             pool_timeout=30,
             pool_recycle=1800,
-            echo=True
+            echo=False
         )
         
         # Синхронный движок для миграций
@@ -47,7 +47,7 @@ class DBManager:
             max_overflow=20,
             pool_timeout=30,
             pool_recycle=1800,
-            echo=True
+            echo=False
         )
 
         # Асинхронная фабрика сессий

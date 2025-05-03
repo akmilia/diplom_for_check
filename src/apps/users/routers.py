@@ -1,9 +1,10 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select , func
+from sqlalchemy import select , func 
 
 from apps.users.models import (
-    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow, Subjects, Groups, GroupsUsers, Schedule# type: ignore
+    Users, Roles, Attendance, Types, t_scheduleshow, t_subjects_with_types, t_usersshow, t_usersshow_with_birthdate, Subjects, Groups, GroupsUsers, Schedule# type: ignore
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
@@ -36,8 +37,8 @@ async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_ses
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
     
     return BearerSchema(
-        access_token=tokens["access_token"], # type: ignore
-        refresh_token=tokens["refresh_token"], # type: ignore 
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
         token_type= "bearer", 
         user_id=user.idusers,
         role=role.name,
@@ -66,8 +67,8 @@ async def refresh_token(
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
         
         return BearerSchema(
-            access_token=tokens["access_token"],  # type: ignore
-            refresh_token=tokens["refresh_token"],  # type: ignore
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
             token_type= "bearer",
             user_id=user.idusers,
             role=role.name,
@@ -81,7 +82,7 @@ async def refresh_token(
 async def get_users(session: AsyncSession = Depends(get_session)):
     query = select(t_usersshow) 
     result = await session.execute(query)
-    return result.mappings().all()
+    return result.mappings().all() 
 
 @router.get('/teachers', response_model=list[UserResponseSchema])
 async def get_teachers(session: AsyncSession = Depends(get_session)):
@@ -89,27 +90,35 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
     result = await session.execute(query)
     return result.mappings().all()  
 
+
+logger = logging.getLogger(__name__) 
+
+
+
 @router.get('/current-user', response_model=UserResponseSchemaBithdate)
 async def get_current_user_profile(
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_session)
-):  
-    # Получаем данные из представления t_usersshow
-    query = select(t_usersshow).where(t_usersshow.c.idusers == current_user_id)
-    result = await session.execute(query)
-    user = result.mappings().first()  # Используем mappings() для работы с представлениями
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return {
-        "idusers": user["idusers"],
-        "full_name": user["full_name"],
-        "login": user["login"],
-        "birthdate": user["birthdate"],
-        "id_roles": user["idroles"],
-        "user_role": user["user_role"]  # Предполагая, что это есть в t_usersshow
-    }
+):
+    try:
+        query = select(t_usersshow_with_birthdate).where(t_usersshow_with_birthdate.c.idusers == current_user_id)
+        result = await session.execute(query)
+        user = result.mappings().first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "idusers": user["idusers"],
+            "full_name": user["full_name"],
+            "login": user["login"],
+            "birthdate": user["birthdate"].isoformat() if user["birthdate"] else None,
+            "id_roles": user["idroles"],
+            "user_role": user["user_role"]
+        }
+    except Exception as e:
+        logger.error(f"Current user error: {str(e)}")
+        raise HTTPException(500, "Internal server error")
 
 
 @router.get('/user-courses', response_model=list[str]) 
