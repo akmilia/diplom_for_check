@@ -8,15 +8,26 @@ from apps.users.models import (
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
-    SubjectSchema, ScheduleEntryResponse, ScheduleEntrySchema, UserResponseSchemaBithdate # type: ignore
+    SubjectSchema, ScheduleEntrySchema, UserResponseSchemaBithdate, ScheduleTeacherSchema
 )
 from database.manager import AsyncSession, get_session
 from jose import jwt, JWTError
 
 from middlewares.security import SECRET_KEY, ALGORITHM
-from middlewares.security import get_current_user_id, get_current_user_role, create_tokens
+from middlewares.security import get_current_user_id, get_current_user_role, create_tokens, get_current_user
 
 router = APIRouter(prefix="/api")
+
+@router.get("/debug/token-info")
+async def debug_token_info(
+    current_user: BearerSchema = Depends(get_current_user)
+):
+    """Endpoint for debugging token structure"""
+    return {
+        "token_data": current_user.dict(), # type: ignore
+        "is_valid": True,
+        "current_time": datetime.now(timezone.utc).isoformat()
+    }
 
 @router.post('/login', response_model=BearerSchema)
 async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_session)):
@@ -31,7 +42,10 @@ async def login(login_data: LoginSchema, session: AsyncSession = Depends(get_ses
 
     role = (await session.execute(
         select(Roles).where(Roles.idroles == user.roles_idroles)
-    )).scalar_one()
+    )).scalar_one() 
+
+    if role.idroles not in (2, 3):
+        raise HTTPException(status_code=404, detail='Работа такой роли не предусмотрена в этом приложении')
 
     tokens = create_tokens(user.idusers, role.name)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
@@ -90,18 +104,16 @@ async def get_teachers(session: AsyncSession = Depends(get_session)):
     result = await session.execute(query)
     return result.mappings().all()  
 
-
 logger = logging.getLogger(__name__) 
-
-
-
 @router.get('/current-user', response_model=UserResponseSchemaBithdate)
 async def get_current_user_profile(
-    current_user_id: int = Depends(get_current_user_id),
+    current_user: BearerSchema = Depends(get_current_user),  
     session: AsyncSession = Depends(get_session)
 ):
     try:
-        query = select(t_usersshow_with_birthdate).where(t_usersshow_with_birthdate.c.idusers == current_user_id)
+        query = select(t_usersshow_with_birthdate).where(
+            t_usersshow_with_birthdate.c.idusers == current_user.user_id  
+        )
         result = await session.execute(query)
         user = result.mappings().first()
         
@@ -123,23 +135,22 @@ async def get_current_user_profile(
 
 @router.get('/user-courses', response_model=list[str]) 
 async def get_user_courses(
-    current_user_id: int = Depends(get_current_user_id),
-    current_user_role: str = Depends(get_current_user_role),
-    session: AsyncSession = Depends(get_session)
+   current_user: BearerSchema = Depends(get_current_user),  
+   session: AsyncSession = Depends(get_session)
 ) -> list[str]:  # Добавляем аннотацию типа возвращаемого значения
    
-    if current_user_role == "Преподаватель":
+    if current_user.role == "Преподаватель":
         result = await session.execute(
             select(Subjects.name)
             .join(Schedule, Schedule.subjects_idsubjects == Subjects.idsubjects)
-            .where(Schedule.users_idusers == current_user_id)
+            .where(Schedule.users_idusers == current_user.user_id)
             .distinct()
         )
-    elif current_user_role == "Ученик":
+    elif current_user.role == "Ученик":
         result = await session.execute(
             select(Groups.name)
             .join(GroupsUsers, GroupsUsers.groups_idgroups == Groups.idgroups)
-            .where(GroupsUsers.users_idusers == current_user_id)
+            .where(GroupsUsers.users_idusers == current_user.user_id)
         )
     else:
         return []
@@ -242,84 +253,37 @@ async def enroll_to_group(
     await session.commit()
 
     return {"message": "Enrollment successful"}
-# @router.post('/enroll/group')
-# async def enroll_to_group( 
-#     request: Request,
-#     group_id: int,  # Принимаем ID группы напрямую из тела запроса
-#     current_user_id: int = Depends(get_current_user_id),
-#     current_user_role: str = Depends(get_current_user_role),
-#     session: AsyncSession = Depends(get_session)
-# ):
-#     print(f"Токен: {request.headers.get('authorization')}")  # Для отладки
-#     print(f"Данные: {await request.body()}")  # type: ignore 
 
-#     if current_user_role != "Ученик":
-#         raise HTTPException(status_code=403, detail="Only students can enroll")
-
-#     # Проверяем существующую запись
-#     existing = await session.execute(
-#         select(GroupsUsers).where(
-#             GroupsUsers.groups_idgroups == group_id,
-#             GroupsUsers.users_idusers == current_user_id
-#         )
-#     )
-#     if existing.scalar():
-#         raise HTTPException(status_code=400, detail="Already enrolled")
-
-#     # Проверяем количество участников группы
-#     count = await session.scalar(
-#         select(func.count()).where(GroupsUsers.groups_idgroups == group_id)
-#     )
-    
-#     if count >= 20: # type: ignore
-#         raise HTTPException(status_code=400, detail="Group is full")
-
-#     # Создаем запись
-#     session.add(GroupsUsers(
-#         groups_idgroups=group_id,
-#         users_idusers=current_user_id
-#     ))
-#     await session.commit()
-
-#     return {"message": "Enrollment successful"}
-
-@router.get("/schedule", response_model=list[ScheduleEntrySchema])
-async def get_schedule(
+@router.get("/common_schedule", response_model=list[ScheduleEntrySchema])
+async def get_common_schedule(
     session: AsyncSession = Depends(get_session),
-    user_id: int = Depends(get_current_user_id), 
-    role: str = Depends(get_current_user_role)
 ) -> list[ScheduleEntrySchema]:
-    """
-    Получение расписания в зависимости от роли пользователя
-    """
-    if role == "Ученик":
-        # Логика для ученика
-        groups_query = select(GroupsUsers).where(GroupsUsers.users_idusers == user_id)
-        user_groups = (await session.execute(groups_query)).scalars().all()
-        
-        if not user_groups:
-            return []
-        
-        group_ids = [group.groups_idgroups for group in user_groups]
-        
-        schedule_query = (
+    """Получение общего расписания для всех ролей"""
+    try:
+        # Используем mappings() чтобы получить словари вместо кортежей
+        result = await session.execute(
             select(t_scheduleshow)
-            .where(t_scheduleshow.c.groups_idgroup.in_(group_ids))
             .order_by(t_scheduleshow.c.day_of_week, t_scheduleshow.c.time)
         )
-    elif role == "Преподаватель":
-        # Логика для преподавателя
-        schedule_query = (
-            select(t_scheduleshow)
-            .where(t_scheduleshow.c.users_idusers == user_id)
-            .order_by(t_scheduleshow.c.day_of_week, t_scheduleshow.c.time)
-        )
-    else:
-        # Для админа или других ролей
-        schedule_query = select(t_scheduleshow).order_by(t_scheduleshow.c.day_of_week, t_scheduleshow.c.time)
-    
-    schedule = (await session.execute(schedule_query)).scalars().all()
-    return schedule # type: ignore
+        
+        schedules = result.mappings().all()
+        
+        # Преобразуем данные в соответствии с моделью ScheduleEntrySchema
+        return [
+            ScheduleEntrySchema(
+                idschedule=item["idschedule"],
+                time=item["time"].strftime("%H:%M"),  # Преобразуем время в строку
+                subject_name=item["subject_name"],
+                teacher=ScheduleTeacherSchema.from_string(item["teacher"]),
+                cabinet=str(item["cabinet"]),
+                group_name=item["group_name"],
+                day_of_week=item["day_of_week"]
+            )
+            for item in schedules
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching common schedule: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get('/schedule/{schedule_id}/dates', response_model=list[str])
 async def get_schedule_dates(

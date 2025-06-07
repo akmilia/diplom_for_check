@@ -49,9 +49,9 @@ class UserResponseSchema(BaseModel):
 
 class UserResponseSchemaBithdate(BaseModel):
     idusers: int 
-    full_name: str
     login: str 
     birthdate: date
+    full_name: str
     id_roles: int
     user_role: str
     class Config:
@@ -133,18 +133,18 @@ class ScheduleEntrySchema(BaseModel):
     class Config:
         from_attributes = True
 
-class ScheduleEntryResponse(BaseModel):
-    idschedule: int
-    time: str  # Формат "HH:MM"
-    subject_name: str
-    teacher: ScheduleTeacherSchema
-    cabinet: str
-    group_name: Optional[str]  #type: ignore
-    day_of_week: str
-    dates: list[str]  # Даты в формате "dd.MM.yyyy"
+# class ScheduleEntryResponse(BaseModel):
+#     idschedule: int
+#     time: str  # Формат "HH:MM"
+#     subject_name: str
+#     teacher: ScheduleTeacherSchema
+#     cabinet: str
+#     group_name: Optional[str]  #type: ignore
+#     day_of_week: str
+#     dates: list[str]  # Даты в формате "dd.MM.yyyy"
     
-    class Config:
-        from_attributes = True
+#     class Config:
+#         from_attributes = True
 
 class DayScheduleSchema(BaseModel):
     date: date  # Конкретная дата (для посещаемости)

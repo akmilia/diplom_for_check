@@ -118,7 +118,7 @@ t_usersshow_with_birthdate = Table(
     Column('idroles', Integer),
     Column('user_role', String(25)),
     schema='public'
-)
+) 
 
 class TypesSubjects(Base):
     __tablename__ = 'types_subjects'
