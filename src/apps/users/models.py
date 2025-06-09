@@ -52,6 +52,19 @@ t_scheduleshow = Table(
     Column('cabinet', Integer),
     Column('group_nam', String(45)),
     Column('day_of_week', Text)
+) 
+
+t_scheduleshow_extra = Table(
+    'scheduleshow_extra', Base.metadata,
+    Column('idschedule', Integer),
+    Column('time', Time(True)),
+    Column('subject_name', String(45)), 
+    Column('teacher', String(45)),
+    Column('teacher_id', Integer),
+    Column('cabinet', Integer), 
+    Column('group_id', Integer),
+    Column('group_nam', String(45)),
+    Column('day_of_week', Text)
 )
 
 

@@ -125,29 +125,50 @@ class ScheduleEntrySchema(BaseModel):
     idschedule: int
     time: str  # Формат "HH:MM"
     subject_name: str
-    teacher: ScheduleTeacherSchema
+    teacher: str
     cabinet: str
-    group_name: Optional[str] #type: ignore
+    group_nam: str
     day_of_week: str
     
     class Config:
         from_attributes = True
 
-# class ScheduleEntryResponse(BaseModel):
-#     idschedule: int
-#     time: str  # Формат "HH:MM"
-#     subject_name: str
-#     teacher: ScheduleTeacherSchema
-#     cabinet: str
-#     group_name: Optional[str]  #type: ignore
-#     day_of_week: str
-#     dates: list[str]  # Даты в формате "dd.MM.yyyy"
+class ScheduleExtraSchema(BaseModel):
+    idschedule: int
+    time: str  # Формат "HH:MM"
+    subject_name: str
+    teacher: str
+    teacher_id: int
+    cabinet: str
+    group_id: int
+    group_nam: str
+    day_of_week: str
     
-#     class Config:
-#         from_attributes = True
+    class Config:
+        from_attributes = True
+class AttendanceSchema(BaseModel):
+    idattendance: int
+    idschedule: int
+    date: date
 
+# For day-specific schedule display
 class DayScheduleSchema(BaseModel):
-    date: date  # Конкретная дата (для посещаемости)
-    day_name: str  # Название дня недели
-    schedules: list[ScheduleEntrySchema]
+    date: date
+    day_name: str
+    schedules: list['ScheduleEntrySchema']
 
+# For date selection in UI
+class ScheduleDateSchema(BaseModel):
+    idattendance: int  # Crucial for attendance operations
+    date: str  # Format "YYYY-MM-DD"
+    attendance_status: bool | None  # Null if not marked
+
+# For attendance records (student list with statuses)
+class AttendanceRecordSchema(BaseModel):
+    iduser: int
+    full_name: str
+    status: bool | None  # True=present, False=absent, None=not marked
+class BilNebilSchema(BaseModel):
+    idattendance: int
+    iduser: int
+    status: None
