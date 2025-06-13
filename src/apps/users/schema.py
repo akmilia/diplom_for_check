@@ -151,24 +151,23 @@ class AttendanceSchema(BaseModel):
     idschedule: int
     date: date
 
-# For day-specific schedule display
 class DayScheduleSchema(BaseModel):
     date: date
     day_name: str
     schedules: list['ScheduleEntrySchema']
-
-# For date selection in UI
 class ScheduleDateSchema(BaseModel):
-    idattendance: int  # Crucial for attendance operations
-    date: str  # Format "YYYY-MM-DD"
-    attendance_status: bool | None  # Null if not marked
-
-# For attendance records (student list with statuses)
+    idattendance: int 
+    date: str 
+    attendance_status: bool | None  
 class AttendanceRecordSchema(BaseModel):
     iduser: int
     full_name: str
-    status: bool | None  # True=present, False=absent, None=not marked
+    status: bool | None  
 class BilNebilSchema(BaseModel):
     idattendance: int
     iduser: int
-    status: None
+    status: None 
+    
+class UpdateAttendanceRequest(BaseModel):
+    idattendance: int
+    updates: dict[int, Optional[bool]]  # type: ignore # user_id -> status (True/False/None)
