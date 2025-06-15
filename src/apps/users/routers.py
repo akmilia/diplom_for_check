@@ -3,8 +3,8 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Body
 from datetime import date, datetime, timezone, timedelta  # type: ignore
 from fastapi.param_functions import Query
-from sqlalchemy import case, select , func 
-from starlette.responses import FileResponse
+from sqlalchemy import and_, case, select , func # type: ignore
+from starlette.responses import Response
 import yagmail
 
 from apps.users.models import (
@@ -105,12 +105,17 @@ async def logout():
     return {"detail": "Logged out"}
 
     
-@router.get('/documentation/download')
-async def download_documentation():
-    doc_path = 'static/docs/documentation.pdf'  # путь к файлу с документацией
+@app.get('/documentation/download') # type: ignore
+async def download_documentation(): 
+    doc_path = '/src/apps/руководство.pdf'  # Убедитесь, что путь корректен!
     if not os.path.exists(doc_path):
         raise HTTPException(status_code=404, detail="Documentation not found")
-    return FileResponse(path=doc_path, filename="documentation.pdf", media_type='application/pdf') 
+
+    file = open(doc_path, "rb")  # Откройте файл в бинарном режиме
+    response = Response(file.read(), media_type="application/pdf")  # Используйте Response
+    response.headers["Content-Disposition"] = "attachment; filename=documentation.pdf"  # Заголовок для загрузки
+    file.close()
+    return response
 
 @router.get('/users', response_model=list[UserResponseSchema])
 async def get_users(session: AsyncSession = Depends(get_session)):
@@ -423,6 +428,88 @@ async def get_personal_schedule(
 #         logger.error(f"Error in get_schedule_dates: {str(e)}")
 #         raise HTTPException(status_code=500, detail="Internal server error")
 
+# @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
+# async def get_schedule_dates(
+#     schedule_id: int,
+#     current_user: BearerSchema = Depends(get_current_user),
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     try:
+#         # Verify schedule exists
+#         schedule = await session.get(Schedule, schedule_id)
+#         if not schedule:
+#             raise HTTPException(status_code=404, detail="Schedule not found")
+        
+#         # Base query
+#         query = select(
+#             Attendance.idattendance,
+#             Attendance.date,
+#             func.bool_or(BilNebil.status).label("has_attendance")
+#         ).outerjoin(
+#             BilNebil, BilNebil.idattendance == Attendance.idattendance
+#         ).where(
+#             Attendance.idschedule == schedule_id
+#         )
+        
+#         # For students, get their individual status
+#         if current_user.role == "Ученик":
+#             query = query.add_columns(
+#                 func.max(
+#                     case(
+#                         (BilNebil.iduser == current_user.user_id, BilNebil.status),
+#                         else_=None
+#                     )
+#                 ).label("student_status")
+#             ).group_by(Attendance.idattendance, Attendance.date)
+#         else:
+#             query = query.group_by(Attendance.idattendance, Attendance.date)
+        
+#         result = await session.execute(query.order_by(Attendance.date))
+        
+#         return [
+#             ScheduleDateSchema(
+#                 idattendance=row.idattendance,
+#                 date=row.date.strftime("%Y-%m-%d"),
+#                 attendance_status=row.student_status if current_user.role == "Ученик" else row.has_attendance
+#             )
+#             for row in result.all()
+#         ]
+        
+#     except Exception as e:
+#         logger.error(f"Error in get_schedule_dates: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
+# @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
+# async def get_schedule_dates(
+#     schedule_id: int,
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     try:
+#         # Просто получаем все даты для данного расписания
+#         result = await session.execute(
+#             select(
+#                 Attendance.idattendance,
+#                 Attendance.date
+#             )
+#             .where(Attendance.idschedule == schedule_id)
+#             .order_by(Attendance.date)
+#         )
+        
+#         dates = result.all()
+        
+#         return [
+#             ScheduleDateSchema(
+#                 idattendance=row.idattendance,
+#                 date=row.date.strftime("%Y-%m-%d"),
+#                 attendance_status=None  # Пока не передаем статус
+#             )
+#             for row in dates
+#         ]
+        
+#     except Exception as e:
+#         logger.error(f"Error in get_schedule_dates: {str(e)}", exc_info=True)
+#         raise HTTPException(status_code=500, detail="Internal server error") 
+
 @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
 async def get_schedule_dates(
     schedule_id: int,
@@ -430,56 +517,49 @@ async def get_schedule_dates(
     session: AsyncSession = Depends(get_session)
 ):
     try:
-        # Verify schedule exists
+        # Проверяем существование расписания
         schedule = await session.get(Schedule, schedule_id)
         if not schedule:
             raise HTTPException(status_code=404, detail="Schedule not found")
-        
+
+        base_query = select(
+            Attendance.idattendance,
+            Attendance.date
+        ).where(
+            Attendance.idschedule == schedule_id
+        )
+
         if current_user.role == "Ученик":
-            # For students - get dates with their individual status
+            # Добавляем статус посещения для текущего студента
             query = (
                 select(
                     Attendance.idattendance,
                     Attendance.date,
-                    func.max(
-                        case(
-                            (BilNebil.iduser == current_user.user_id, BilNebil.status),
-                            else_=None
-                        )
-                    ).label("student_status")
+                    BilNebil.status.label("attendance_status")
                 )
                 .outerjoin(
-                    BilNebil, BilNebil.idattendance == Attendance.idattendance
+                    BilNebil,
+                    and_(
+                        BilNebil.idattendance == Attendance.idattendance,
+                        BilNebil.iduser == current_user.user_id
+                    )
                 )
                 .where(Attendance.idschedule == schedule_id)
-                .group_by(Attendance.idattendance, Attendance.date)
-                .order_by(Attendance.date)
             )
         else:
-            # For teachers/admin - get dates with group attendance status
-            query = (
-                select(
-                    Attendance.idattendance,
-                    Attendance.date,
-                    func.bool_or(BilNebil.status).label("has_attendance")
-                )
-                .outerjoin(
-                    BilNebil, BilNebil.idattendance == Attendance.idattendance
-                )
-                .where(Attendance.idschedule == schedule_id)
-                .group_by(Attendance.idattendance, Attendance.date)
-                .order_by(Attendance.date)
-            )
-        
-        result = await session.execute(query)
-        
+            # Для преподавателей оставляем только даты
+            query = base_query
+
+        result = await session.execute(query.order_by(Attendance.date))
+        dates = result.all()
+
         return [
             ScheduleDateSchema(
                 idattendance=row.idattendance,
                 date=row.date.strftime("%Y-%m-%d"),
-                attendance_status=row.student_status if current_user.role == "Ученик" else row.has_attendance
+                attendance_status=row.attendance_status if current_user.role == "Ученик" else None
             )
-            for row in result.all()
+            for row in dates
         ]
         
     except Exception as e:
