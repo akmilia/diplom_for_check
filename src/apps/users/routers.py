@@ -1,26 +1,26 @@
 import logging 
 import os
 from fastapi import APIRouter, Depends, HTTPException, Body
-from datetime import date, datetime, timezone, timedelta  # type: ignore
+from datetime import date, datetime, timezone, timedelta
 from fastapi.param_functions import Query
-from sqlalchemy import and_, case, select , func # type: ignore
-from starlette.responses import Response
-import yagmail
+from sqlalchemy import and_, select , func, text
+from starlette.responses import Response 
 
 from apps.users.models import (
     Users, Roles, Attendance, Types, t_scheduleshow, t_scheduleshow_extra, t_subjects_with_types, t_usersshow, t_usersshow_with_birthdate, 
-    Subjects, Groups, GroupsUsers, Schedule, BilNebil# type: ignore
+    Subjects, Groups, GroupsUsers, Schedule, BilNebil
 )
 from apps.users.schema import (
     BearerSchema, LoginSchema, UserResponseSchema, TypeSchema, GroupSchema, 
     SubjectSchema, ScheduleEntrySchema, ScheduleExtraSchema, UpdateAttendanceRequest, 
-    UserResponseSchemaBithdate, ScheduleDateSchema, AttendanceRecordSchema, BilNebilSchema, DayScheduleSchema # type: ignore
+    UserResponseSchemaBithdate, ScheduleDateSchema, AttendanceRecordSchema, TeacherSubjectSchema, TeacherWithSubjectsSchema # type: ignore
 )
 from database.manager import AsyncSession, get_session
 from jose import jwt, JWTError
 
 from middlewares.security import SECRET_KEY, ALGORITHM
-from middlewares.security import get_current_user_id, get_current_user_role, create_tokens, get_current_user
+from middlewares.security import get_current_user_id, get_current_user_role, create_tokens, get_current_user 
+from core.email_service import send_email
 
 router = APIRouter(prefix="/api")
 
@@ -100,12 +100,10 @@ async def refresh_token(
     
 @router.post('/logout')
 async def logout():
-    # На backend обычно просто удаляют/аннулируют refresh токен, если хранится
-    # Здесь можно реализовать логику очистки сессии, если есть
     return {"detail": "Logged out"}
 
     
-@app.get('/documentation/download') # type: ignore
+@router.get('/documentation/download') # type: ignore
 async def download_documentation(): 
     doc_path = '/src/apps/руководство.pdf'  # Убедитесь, что путь корректен!
     if not os.path.exists(doc_path):
@@ -121,7 +119,47 @@ async def download_documentation():
 async def get_users(session: AsyncSession = Depends(get_session)):
     query = select(t_usersshow) 
     result = await session.execute(query)
-    return result.mappings().all() 
+    return result.mappings().all()  
+
+@router.get('/teachers-with-subjects', response_model=list[TeacherWithSubjectsSchema])
+async def get_teachers_with_subjects(session: AsyncSession = Depends(get_session)): # type: ignore
+    try:
+        # Получаем преподавателей и их предметы
+        query = text("""
+            SELECT 
+                u.idusers,
+                u.surname || ' ' || u.name || ' ' || COALESCE(u.paternity, '') as full_name,
+                u.login,
+                json_agg(DISTINCT jsonb_build_object(
+                    'subject_id', s.idsubjects,
+                    'subject_name', s.name,
+                    'schedule_count', (SELECT COUNT(*) FROM schedule sch 
+                                     WHERE sch.users_idusers = u.idusers 
+                                     AND sch.subjects_idsubjects = s.idsubjects)
+                )) as subjects
+            FROM users u
+            LEFT JOIN schedule sc ON sc.users_idusers = u.idusers
+            LEFT JOIN subjects s ON sc.subjects_idsubjects = s.idsubjects
+            WHERE u.roles_idroles = 2
+            GROUP BY u.idusers, full_name, u.login
+            ORDER BY full_name
+        """)
+        
+        result = await session.execute(query)
+        teachers = result.mappings().all()
+        
+        # Обрабатываем случай, когда у преподавателя нет предметов
+        processed_teachers = []
+        for teacher in teachers:
+            teacher_dict = dict(teacher)
+            if not teacher_dict['subjects'][0]['subject_id']:
+                teacher_dict['subjects'] = []
+            processed_teachers.append(teacher_dict) # type: ignore
+        
+        return processed_teachers # type: ignore
+    except Exception as e:
+        logger.error(f"Error in get_teachers_with_subjects: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get('/teachers', response_model=list[UserResponseSchema])
 async def get_teachers(session: AsyncSession = Depends(get_session)):
@@ -203,22 +241,16 @@ async def get_groups(
 async def get_types(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Types))
     types = result.scalars().all()
-    return types 
+    return types  
 
-async def send_email(to: str, subject: str, body: str):
-    """Отправляет email с использованием yagmail.  Обратите внимание на обработку ошибок."""
-    sender = os.environ.get("EMAIL_SENDER")
-    password = os.environ.get("EMAIL_PASSWORD")
-
-    if not sender or not password:
-        raise HTTPException(status_code=500, detail="Email configuration missing.")
-    try:
-        yag = yagmail.SMTP(sender, password) # type: ignore
-        yag.send(to=to, subject=subject, contents=body) # type: ignore
-    except Exception as e:
-        # Логирование ошибки здесь критически важно для отладки
-        print(f"Error sending email: {e}")  # Запись ошибки в консоль
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {e}") from e # Передача исключения вверх
+@router.get("/test-email")
+async def test_email():
+    await send_email(
+        to="akmilia@yandex.ru",
+        subject="Тест",
+        body="<h1>Работает!</h1>"
+    )
+    return {"message": "Email sent"}
 
 @router.post('/enroll/group')
 async def enroll_to_group(
@@ -265,15 +297,31 @@ async def enroll_to_group(
 
 
         # Отправка уведомления
-        if user and user.login: 
-            return {"message": "Enrollment successful"} # Возвращаем ID записи
+        # if user and user.login: 
+        #     return {"message": "Enrollment successful"} # Возвращаем ID записи
             # await send_email(
             #     to=user.login, # Используем email
             #     subject="Запись на занятие",
             #     body=f"Вы успешно записаны на группу {group.name}. Обратите внимание, что для подтверждения необходимо обратиться к администрации."
             # )
+        if user.login:
+            email_body = f"""
+            <h3>Вы записаны в группу {group.name}!</h3>
+            <p>Дата: {datetime.now().strftime('%d.%m.%Y')}</p>
+        """
+        try:
+            await send_email(
+                to=user.login,
+                subject=f"Запись в группу {group.name}",
+                body=email_body # type: ignore
+            )
+        except Exception as e:
+            logger.error(f"Email sending failed: {str(e)}")
 
-       
+        return {
+            "message": "Enrollment successful",
+            "notification": "Вам отправлено письмо с подтверждением"
+        }
 
     except Exception as e:
         await session.rollback()  # Очень важно откатить транзакцию при ошибке
@@ -376,139 +424,6 @@ async def get_personal_schedule(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
-
-# @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
-# async def get_schedule_dates(
-#     schedule_id: int,
-#     current_user: BearerSchema = Depends(get_current_user),
-#     session: AsyncSession = Depends(get_session)
-# ):
-#     try:
-#         # Verify schedule exists
-#         schedule = await session.get(Schedule, schedule_id)
-#         if not schedule:
-#             raise HTTPException(status_code=404, detail="Schedule not found")
-        
-#         # Base query
-#         query = select(
-#             Attendance.idattendance,
-#             Attendance.date,
-#             func.bool_or(BilNebil.status).label("has_attendance")
-#         ).outerjoin(
-#             BilNebil, BilNebil.idattendance == Attendance.idattendance
-#         ).where(
-#             Attendance.idschedule == schedule_id
-#         )
-        
-#         # For students, get their individual status
-#         if current_user.role == "Ученик":
-#             query = query.add_columns(
-#                 func.max(
-#                     case(
-#                         (BilNebil.iduser == current_user.user_id, BilNebil.status),
-#                         else_=None
-#                     )
-#                 ).label("student_status")
-#             ).group_by(Attendance.idattendance, Attendance.date)
-#         else:
-#             query = query.group_by(Attendance.idattendance, Attendance.date)
-        
-#         result = await session.execute(query.order_by(Attendance.date))
-        
-#         return [
-#             ScheduleDateSchema(
-#                 idattendance=row.idattendance,
-#                 date=row.date.strftime("%Y-%m-%d"),
-#                 attendance_status=row.student_status if current_user.role == "Ученик" else row.has_attendance
-#             )
-#             for row in result.all()
-#         ]
-        
-#     except Exception as e:
-#         logger.error(f"Error in get_schedule_dates: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Internal server error")
-
-# @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
-# async def get_schedule_dates(
-#     schedule_id: int,
-#     current_user: BearerSchema = Depends(get_current_user),
-#     session: AsyncSession = Depends(get_session)
-# ):
-#     try:
-#         # Verify schedule exists
-#         schedule = await session.get(Schedule, schedule_id)
-#         if not schedule:
-#             raise HTTPException(status_code=404, detail="Schedule not found")
-        
-#         # Base query
-#         query = select(
-#             Attendance.idattendance,
-#             Attendance.date,
-#             func.bool_or(BilNebil.status).label("has_attendance")
-#         ).outerjoin(
-#             BilNebil, BilNebil.idattendance == Attendance.idattendance
-#         ).where(
-#             Attendance.idschedule == schedule_id
-#         )
-        
-#         # For students, get their individual status
-#         if current_user.role == "Ученик":
-#             query = query.add_columns(
-#                 func.max(
-#                     case(
-#                         (BilNebil.iduser == current_user.user_id, BilNebil.status),
-#                         else_=None
-#                     )
-#                 ).label("student_status")
-#             ).group_by(Attendance.idattendance, Attendance.date)
-#         else:
-#             query = query.group_by(Attendance.idattendance, Attendance.date)
-        
-#         result = await session.execute(query.order_by(Attendance.date))
-        
-#         return [
-#             ScheduleDateSchema(
-#                 idattendance=row.idattendance,
-#                 date=row.date.strftime("%Y-%m-%d"),
-#                 attendance_status=row.student_status if current_user.role == "Ученик" else row.has_attendance
-#             )
-#             for row in result.all()
-#         ]
-        
-#     except Exception as e:
-#         logger.error(f"Error in get_schedule_dates: {str(e)}")
-#         raise HTTPException(status_code=500, detail="Internal server error")
-
-# @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
-# async def get_schedule_dates(
-#     schedule_id: int,
-#     session: AsyncSession = Depends(get_session)
-# ):
-#     try:
-#         # Просто получаем все даты для данного расписания
-#         result = await session.execute(
-#             select(
-#                 Attendance.idattendance,
-#                 Attendance.date
-#             )
-#             .where(Attendance.idschedule == schedule_id)
-#             .order_by(Attendance.date)
-#         )
-        
-#         dates = result.all()
-        
-#         return [
-#             ScheduleDateSchema(
-#                 idattendance=row.idattendance,
-#                 date=row.date.strftime("%Y-%m-%d"),
-#                 attendance_status=None  # Пока не передаем статус
-#             )
-#             for row in dates
-#         ]
-        
-#     except Exception as e:
-#         logger.error(f"Error in get_schedule_dates: {str(e)}", exc_info=True)
-#         raise HTTPException(status_code=500, detail="Internal server error") 
 
 @router.get("/schedule/{schedule_id}/dates", response_model=list[ScheduleDateSchema])
 async def get_schedule_dates(

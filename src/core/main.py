@@ -4,8 +4,7 @@ from database import lifespan
 from middlewares import register_middlewares
 from .config import settings
 from .exceptions import register_exceptions
-from apps.users.routers import router
-
+from apps.users.routers import router 
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -46,4 +45,4 @@ logging.basicConfig(
 )
 
 # Уменьшаем логгирование SQLAlchemy
-logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING) 

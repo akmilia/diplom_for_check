@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(default='postgresql://postgres:2006@localhost:5432/diplom_school')
 
     # Redis
-    REDIS_URL: str = Field(default='redis://localhost:6379/0')
+    REDIS_URL: str = Field(default='redis://localhost:6379/0') 
+    EMAIL_USERNAME: str = "gayalieva1707@gmail.com"
+    EMAIL_PASSWORD: str = "kwdh ucyu zimx ydgj"
+    EMAIL_FROM: str = "gayalieva1707@gmail.com"
 
 settings = Settings()

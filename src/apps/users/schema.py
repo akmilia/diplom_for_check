@@ -37,6 +37,20 @@ class ErrorResponse(BaseModel):
     detail: str
     status_code: int 
 
+class TeacherSubjectSchema(BaseModel):
+    subject_id: int
+    subject_name: str
+    schedule_count: int
+
+class TeacherWithSubjectsSchema(BaseModel):
+    idusers: int
+    full_name: str
+    login: str
+    subjects: list[TeacherSubjectSchema]
+    
+    class Config:
+        from_attributes = True 
+        
 # Пользователи
 class UserResponseSchema(BaseModel):
     idusers: int 
